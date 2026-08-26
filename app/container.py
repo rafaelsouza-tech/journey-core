@@ -15,6 +15,8 @@ from app.config import Settings
 from app.core.clock import Clock, SystemClock
 from app.core.exceptions import ConfigurationError
 from app.features.events.store import EventStore, InMemoryEventStore
+from app.features.followups.loader import load_ruleset
+from app.features.followups.models import RuleSet
 from app.features.journeys.loader import PlanRegistry
 from app.features.journeys.repository import JourneyRepository
 from app.features.patients.repository import PatientRepository
@@ -34,6 +36,7 @@ class Container:
     journeys: JourneyRepository
     templates: TemplateRegistry
     plans: PlanRegistry
+    rules: RuleSet
 
 
 def build_container(settings: Settings, clock: Clock | None = None) -> Container:
@@ -42,6 +45,7 @@ def build_container(settings: Settings, clock: Clock | None = None) -> Container
     templates = TemplateRegistry.load_from_dir(settings.PROTOCOL_TEMPLATES_DIR)
     plans = PlanRegistry.load_from_dir(settings.JOURNEY_PLANS_DIR)
     _ensure_every_template_has_a_plan(templates, plans)
+    rules = load_ruleset(settings.FOLLOWUP_RULES_PATH)
     return Container(
         settings=settings,
         clock=clock,
@@ -51,6 +55,7 @@ def build_container(settings: Settings, clock: Clock | None = None) -> Container
         journeys=JourneyRepository(),
         templates=templates,
         plans=plans,
+        rules=rules,
     )
 
 

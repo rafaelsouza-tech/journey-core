@@ -16,6 +16,7 @@ import structlog
 from app.core.pii import is_forbidden_key, looks_like_phone
 
 _PROTECTED_KEYS = frozenset({"event", "level", "logger", "timestamp", "request_id"})
+_HANDLER_TAG = "journey_core_handler"
 
 
 def redact_pii(
@@ -76,8 +77,13 @@ def configure_logging(level: str = "INFO", log_format: str = "console") -> None:
     )
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(formatter)
+    handler.set_name(_HANDLER_TAG)
     root = logging.getLogger()
-    root.handlers = [handler]
+    # Substitui só o handler desta aplicação; preserva outros (ex.: captura de logs em testes).
+    for existing in list(root.handlers):
+        if existing.get_name() == _HANDLER_TAG:
+            root.removeHandler(existing)
+    root.addHandler(handler)
     root.setLevel(getattr(logging, level.upper(), logging.INFO))
 
 

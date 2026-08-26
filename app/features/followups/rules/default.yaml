@@ -1,0 +1,42 @@
+# Regras de elegibilidade de follow-up.
+# Todas as regras são avaliadas (sem short-circuit) e entram no trace da decisão.
+# A ORDEM é a prioridade: o `reason` reportado é o da primeira regra que falha.
+version: 1
+template_key: checkin_adesao
+
+rules:
+  - id: consent
+    description: Paciente com termos aceitos e consentimento ativo
+    check: consent_status
+    expect: { equals: accepted }
+    reason: missing_consent
+    # reason específico por valor observado (pending cai no reason padrão)
+    reason_by_value:
+      paused: consent_paused
+      revoked: consent_revoked
+
+  - id: protocol_completed
+    description: Pelo menos um protocolo concluído (inclusive por skip)
+    check: has_completed_protocol
+    expect: { equals: true }
+    reason: protocol_not_completed
+
+  - id: journey_active
+    description: Jornada mais recente em andamento
+    check: latest_journey_status
+    expect: { equals: em_andamento }
+    reason: no_active_journey
+
+  - id: active_task
+    description: Existe pelo menos uma tarefa em andamento
+    check: active_tasks_count
+    expect: { gte: 1 }
+    reason: no_active_task
+
+  - id: cooldown
+    description: Sem followup_eligible nas últimas 72 horas
+    check: hours_since_last_event
+    params: { event_name: followup_eligible }
+    expect: { gte: 72 }
+    if_absent: pass   # nunca disparou → não há cooldown
+    reason: cooldown
