@@ -1,0 +1,111 @@
+[project]
+name = "journey-core"
+version = "1.0.0"
+description = "Núcleo determinístico de uma jornada de saúde: consentimento, protocolo clínico data-driven, trilha de eventos e elegibilidade de follow-up."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Proprietary" }
+authors = [{ name = "Rafael Souza" }]
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "structlog>=24.4",
+    "pyyaml>=6.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-cov>=6.0",
+    "httpx>=0.28",
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "types-PyYAML>=6.0",
+    "pre-commit>=4.0",
+    "httpx2>=2.12.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+# -----------------------------------------------------------------------------
+# Ruff (lint + format; formatação compatível com black)
+# -----------------------------------------------------------------------------
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+exclude = [".venv", "venv", "build", "dist", ".git"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "C4", "SIM", "RUF"]
+ignore = [
+    "E501",   # comprimento de linha é responsabilidade do formatter
+    "B008",   # Depends() em default de parâmetro é o idioma do FastAPI
+    "RUF012", # mutable class attrs em modelos Pydantic/dataclasses
+    "RUF001", "RUF002", "RUF003", # travessão/en dash são legítimos em prosa pt-BR
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"tests/**/*.py" = ["S101"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "tests"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+# -----------------------------------------------------------------------------
+# Mypy — type hints obrigatórios em todo o código de aplicação
+# -----------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+plugins = ["pydantic.mypy"]
+warn_return_any = true
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+no_implicit_optional = true
+strict_equality = true
+check_untyped_defs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+ignore_missing_imports = true
+exclude = ["\\.venv", "build", "dist"]
+
+# -----------------------------------------------------------------------------
+# Pytest / coverage
+# -----------------------------------------------------------------------------
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra --strict-markers --tb=short"
+markers = [
+    "unit: testes de unidades puras (motores, guarda de PII, hashing)",
+    "integration: testes de endpoints via TestClient",
+    "e2e: roteiro completo do revisor",
+]
+filterwarnings = ["error::DeprecationWarning:app.*"]
+
+[tool.coverage.run]
+source = ["app"]
+branch = true
+omit = ["app/__main__.py"]
+
+[tool.coverage.report]
+precision = 1
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "\\.\\.\\.",
+]
