@@ -1,0 +1,10 @@
+{
+  "template_id": "phq9",
+  "version": 1,
+  "objective": "Acompanhar o bem-estar emocional nas próximas duas semanas",
+  "tasks": [
+    { "key": "sono", "title": "Registrar como foi o sono de hoje" },
+    { "key": "caminhada", "title": "Fazer uma caminhada leve de 10 minutos" },
+    { "key": "checkin", "title": "Responder ao check-in de adesão" }
+  ]
+}

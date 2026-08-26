@@ -1,0 +1,36 @@
+{
+  "template_id": "phq9",
+  "version": 1,
+  "name": "PHQ-9",
+  "description": "Patient Health Questionnaire-9 — 9 itens, escala Likert 0–3, com skip logic no estilo PHQ-2 após o item 2.",
+  "intro": "Nas últimas duas semanas, com que frequência você foi incomodado por…",
+  "scale": {
+    "options": [
+      { "value": 0, "label": "Nenhuma vez" },
+      { "value": 1, "label": "Vários dias" },
+      { "value": 2, "label": "Mais da metade dos dias" },
+      { "value": 3, "label": "Quase todos os dias" }
+    ]
+  },
+  "scoring": { "method": "sum" },
+  "questions": [
+    { "id": "q1", "order": 1, "text": "Pouco interesse ou prazer em fazer as coisas" },
+    { "id": "q2", "order": 2, "text": "Sentir-se para baixo, deprimido(a) ou sem esperança" },
+    { "id": "q3", "order": 3, "text": "Dificuldade para pegar no sono, continuar dormindo, ou dormir demais" },
+    { "id": "q4", "order": 4, "text": "Sentir-se cansado(a) ou com pouca energia" },
+    { "id": "q5", "order": 5, "text": "Falta de apetite ou comer demais" },
+    { "id": "q6", "order": 6, "text": "Sentir-se mal consigo mesmo(a) — ou que é um fracasso, ou que decepcionou a família ou a si mesmo(a)" },
+    { "id": "q7", "order": 7, "text": "Dificuldade para se concentrar nas coisas (ex.: ler ou ver televisão)" },
+    { "id": "q8", "order": 8, "text": "Lentidão para se mover ou falar, ou o oposto: inquietação a ponto de movimentar-se mais que o habitual" },
+    { "id": "q9", "order": 9, "text": "Pensamentos de que estaria melhor morto(a), ou de se ferir de alguma forma" }
+  ],
+  "skip_rules": [
+    {
+      "id": "phq2_gate",
+      "description": "Avaliar após o item 2: se (item1 + item2) < 3, encerra o bloco com pontuação parcial.",
+      "after_question": "q2",
+      "condition": { "op": "lt", "left": { "sum_of": ["q1", "q2"] }, "right": 3 },
+      "action": "end_block"
+    }
+  ]
+}

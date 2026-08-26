@@ -13,8 +13,13 @@ from fastapi import Depends, Request
 
 from app.config import Settings
 from app.core.clock import Clock, SystemClock
+from app.core.exceptions import ConfigurationError
 from app.features.events.store import EventStore, InMemoryEventStore
+from app.features.journeys.loader import PlanRegistry
+from app.features.journeys.repository import JourneyRepository
 from app.features.patients.repository import PatientRepository
+from app.features.protocols.loader import TemplateRegistry
+from app.features.protocols.repository import ProtocolSessionRepository
 
 
 @dataclass(slots=True)
@@ -25,17 +30,35 @@ class Container:
     clock: Clock
     events: EventStore
     patients: PatientRepository
+    sessions: ProtocolSessionRepository
+    journeys: JourneyRepository
+    templates: TemplateRegistry
+    plans: PlanRegistry
 
 
 def build_container(settings: Settings, clock: Clock | None = None) -> Container:
     """Constrói o container. `clock` injetável para testes determinísticos."""
     clock = clock or SystemClock()
+    templates = TemplateRegistry.load_from_dir(settings.PROTOCOL_TEMPLATES_DIR)
+    plans = PlanRegistry.load_from_dir(settings.JOURNEY_PLANS_DIR)
+    _ensure_every_template_has_a_plan(templates, plans)
     return Container(
         settings=settings,
         clock=clock,
         events=InMemoryEventStore(clock),
         patients=PatientRepository(),
+        sessions=ProtocolSessionRepository(),
+        journeys=JourneyRepository(),
+        templates=templates,
+        plans=plans,
     )
+
+
+def _ensure_every_template_has_a_plan(templates: TemplateRegistry, plans: PlanRegistry) -> None:
+    """Falha no boot — não no meio de um protocolo — se faltar plano para algum template."""
+    missing = sorted(set(templates.ids()) - set(plans.ids()))
+    if missing:
+        raise ConfigurationError(f"templates sem plano de jornada: {', '.join(missing)}")
 
 
 def get_container(request: Request) -> Container:

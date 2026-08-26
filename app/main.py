@@ -17,7 +17,9 @@ from app.core.handlers import register_exception_handlers
 from app.core.logging import configure_logging, get_logger
 from app.core.middleware import RequestContextMiddleware
 from app.features.events.router import router as events_router
+from app.features.journeys.router import router as journeys_router
 from app.features.patients.router import router as patients_router
+from app.features.protocols.router import router as protocols_router
 
 logger = get_logger(__name__)
 
@@ -62,6 +64,8 @@ def create_app(settings: Settings | None = None, clock: Clock | None = None) -> 
     register_exception_handlers(app)
 
     app.include_router(patients_router)
+    app.include_router(protocols_router)
+    app.include_router(journeys_router)
     app.include_router(events_router)
 
     @app.get("/health", tags=["Saúde"], summary="Liveness")

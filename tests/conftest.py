@@ -88,3 +88,46 @@ def assert_no_pii(text: str) -> None:
     """Falha se qualquer dado fictício de PII aparecer no texto."""
     for needle in PII_NEEDLES:
         assert needle not in text, f"PII vazou: {needle!r}"
+
+
+# -----------------------------------------------------------------------------
+# Helpers de fluxo (protocolo / jornada)
+# -----------------------------------------------------------------------------
+
+
+def start_protocol(
+    client: TestClient, patient_id: str, template_id: str = "phq9"
+) -> dict[str, Any]:
+    response = client.post(f"/patients/{patient_id}/protocols", json={"template_id": template_id})
+    assert response.status_code == 201, response.text
+    body: dict[str, Any] = response.json()
+    return body
+
+
+def answer(client: TestClient, session_id: str, question_id: str, value: int) -> Any:
+    return client.post(
+        f"/protocol-sessions/{session_id}/answers",
+        json={"question_id": question_id, "value": value},
+    )
+
+
+def run_protocol(client: TestClient, patient_id: str, values: list[int]) -> dict[str, Any]:
+    """Inicia o PHQ-9 e responde `values` em ordem; devolve o último passo."""
+    step = start_protocol(client, patient_id)
+    for value in values:
+        assert step["next_question"] is not None, "protocolo já concluído"
+        response = answer(client, step["session_id"], step["next_question"]["id"], value)
+        assert response.status_code == 200, response.text
+        step = response.json()
+    return step
+
+
+@pytest.fixture
+def completed_patient(
+    client: TestClient, create_patient: Callable[..., dict[str, Any]]
+) -> dict[str, Any]:
+    """Paciente com PHQ-9 concluído por skip e jornada criada."""
+    patient = create_patient()
+    step = run_protocol(client, patient["id"], [1, 1])
+    assert step["status"] == "completed"
+    return {"patient": patient, "step": step, "journey_id": step["journey_id"]}
