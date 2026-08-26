@@ -21,7 +21,8 @@ router = APIRouter(tags=["Protocolos"])
     summary="Iniciar sessão de protocolo",
     description=(
         "Inicia uma sessão a partir de `template_id` (ex.: `phq9`) e devolve a primeira pergunta. "
-        "Exige consentimento ativo (403 `CONSENT_REQUIRED`). Uma sessão em andamento por template (409)."
+        "Exige consentimento ativo (403 `CONSENT_REQUIRED`). "
+        "Uma sessão em andamento por template (409)."
     ),
 )
 async def start_protocol(

@@ -205,12 +205,12 @@ Cada feature segue o mesmo padrão: `models.py` (entidades e schema dos artefato
 ## 5. Decisões de desenho
 
 - **Template é a única fonte.** O interpretador (`protocols/engine.py`) só conhece um mini-vocabulário — operandos `sum_of` / `answer` / literal e operadores `lt lte gt gte eq ne` — e a ação `end_block`. Não há `if template_id == …` em lugar nenhum; um teste varre os módulos de lógica e falha se aparecer. Um segundo template com regras diferentes roda sem tocar no serviço (há um teste com um template fictício de 3 perguntas).
-- **Pseudonimização por desenho.** O telefone só existe em claro no cadastro operacional. Em eventos, logs e respostas circula `phone_hash = HMAC-SHA256(salt, dígitos)` — HMAC é o "SHA-256 com salt" na construção correta, sem concatenação ingênua; a normalização faz `+55 (11) 90000-0000` e `5511900000000` colidirem no mesmo hash. Nenhum schema de resposta tem o campo `phone`.
-- **PII bloqueada na fronteira, não por convenção.** `EventStore.append()` recusa `properties` com chaves proibidas (`phone`, `name`, `birth_date`, …) ou valores com cara de telefone (10–15 dígitos com separadores; datas ISO e UUIDs não disparam). É erro 500 `PII_GUARD_VIOLATION` — bug de programação, não erro do cliente. O mesmo detector alimenta um processor do structlog, e um teste captura os logs de um fluxo completo e afirma que o telefone não aparece nem se alguém logar `phone=` por descuido.
-- **Respostas de erro não ecoam a entrada.** O handler de validação devolve só `campo: [mensagens]` — nunca o `input` que o Pydantic inclui por padrão. Testado com um telefone inválido: o 422 não contém o valor.
+- **Pseudonimização por desenho.** O telefone só existe em claro no cadastro operacional. Em eventos, logs e respostas circula `phone_hash = HMAC-SHA256(salt, dígitos)` — HMAC é o "SHA-256 com salt" na construção correta, sem concatenação ingênua; a normalização aceita só dígitos ASCII e separadores (`+ - ( ) . espaço`) e faz `+55 (11) 90000-0000` e `5511900000000` colidirem no mesmo hash. Nenhum schema de resposta tem o campo `phone`.
+- **PII bloqueada na fronteira, não por convenção.** `EventStore.append()` recusa `properties` com chaves proibidas (`phone`, `name`, `birth_date`, …) ou valores com cara de telefone — strings com 10–15 dígitos e separadores *e* inteiros nessa faixa (um telefone convertido para número escaparia da detecção textual); datas ISO e UUIDs não disparam. É erro 500 `PII_GUARD_VIOLATION` — bug de programação, não erro do cliente. O mesmo detector alimenta um processor do structlog, e um teste captura os logs de um fluxo completo e afirma que o telefone não aparece nem se alguém logar `phone=` por descuido.
+- **Respostas de erro não ecoam a entrada.** O handler de validação devolve só `campo: [mensagens]` — nunca o `input` que o Pydantic inclui por padrão, e os fragmentos que ele cita entre crases ("found `+` at 1") viram `…`. Ids de template/pergunta fora do formato `[a-z][a-z0-9_]*` são 422 antes de chegar ao serviço, para que nenhum 404/409 repita o que o cliente enviou. Testado com telefone no corpo, no path e na query: nenhum erro contém o valor.
 - **Event store imutável pelo contrato.** A porta `EventStore` expõe `append` e leituras; não existe `update`/`delete` na interface, `Event` é `frozen` e `properties` é `MappingProxyType`. Um teste verifica os três.
 - **Minimização.** `protocol_completed` carrega score, máximo, `ended_by_skip`, contagens — não as respostas individuais. `patient_created` carrega só `consent_status`.
-- **Relógio injetado.** Todo "agora" vem de `Clock`; nos testes, `FixedClock.advance(hours=72)` prova o cooldown na borda exata (71h59 recusa, 72h00 libera), sem congelar o processo.
+- **Relógio injetado.** Todo "agora" vem de `Clock`; nos testes, `FixedClock.advance(hours=72)` prova o cooldown na borda exata (71h59m59s recusa, 72h00m00s libera), sem congelar o processo. O tempo decorrido é truncado a centésimos de hora com aritmética inteira — arredondar liberaria o cooldown até 18 s antes da hora.
 - **Regras declaram prioridade e explicam a recusa.** O YAML é avaliado inteiro (sem short-circuit) e a ordem define qual `reason` é reportado. O cooldown (72h) mora só no YAML — não é env var — para ter fonte única.
 - **Versão pinada.** A sessão guarda `template_version`; o evento de follow-up guarda `rules_version`. Trocar o JSON/YAML não altera o significado de uma sessão em curso nem de uma decisão passada.
 - **Robustez à entrega duplicada.** `POST …/answers` exige o `question_id` esperado (409 `UNEXPECTED_QUESTION` se vier fora de ordem ou repetido); concluir uma tarefa já concluída é 409 sem evento duplicado; só uma sessão em andamento por paciente/template.
@@ -248,7 +248,7 @@ O roteiro da seção 2 (passo 5) e `tests/integration/test_consent_lifecycle.py`
 
 ## 7. Eventos
 
-Envelope: `event_id · occurred_at · event_name · patient_id_hash · properties · schema_version · correlation_id`. O `correlation_id` é o `request_id` do request que originou o evento — liga evento ↔ linha de log. A consulta usa o id interno (`GET /events?patient_id=<uuid>`); o que está persistido é o hash.
+Envelope: `event_id · occurred_at · event_name · patient_id_hash · properties · schema_version · correlation_id`. O `correlation_id` é o `request_id` do request que originou o evento — liga evento ↔ linha de log. Um `X-Request-ID` enviado pelo cliente só é propagado (header, envelope de erro, `correlation_id`) se casar `[A-Za-z0-9._-]{1,128}` e não tiver cara de telefone; caso contrário a API gera um uuid4 — a trilha imutável não aceita conteúdo arbitrário do cliente. O próprio `patient_id_hash` passa pela guarda: um telefone no lugar do hash é recusado. A consulta usa o id interno (`GET /events?patient_id=<uuid>`); o que está persistido é o hash.
 
 | `event_name` | Quando | `properties` |
 |---|---|---|
@@ -274,23 +274,23 @@ Envelope único: `{ "success": false, "error": { "code", "message", "details" },
 
 | `code` | HTTP | Quando |
 |---|---|---|
-| `VALIDATION_ERROR` | 422 | corpo/query inválidos (`details.field_errors`, sem o valor recebido) |
+| `VALIDATION_ERROR` | 422 | corpo, query ou path inválidos (`details.field_errors`, sem o valor recebido — nem os fragmentos que o Pydantic cita) |
 | `PATIENT_NOT_FOUND` · `SESSION_NOT_FOUND` · `JOURNEY_NOT_FOUND` · `TASK_NOT_FOUND` · `TEMPLATE_NOT_FOUND` | 404 | |
 | `PATIENT_ALREADY_EXISTS` | 409 | mesmo telefone (mensagem sem o telefone) |
 | `CONSENT_REQUIRED` | 403 | iniciar/responder protocolo ou concluir tarefa sem consentimento ativo — `details.consent_status` |
 | `INVALID_CONSENT_TRANSITION` | 409 | `details: {from, action}` |
 | `SESSION_IN_PROGRESS` · `SESSION_ALREADY_COMPLETED` · `UNEXPECTED_QUESTION` · `TASK_ALREADY_COMPLETED` | 409 | |
-| `INVALID_ANSWER_VALUE` | 422 | valor fora da escala (`details.allowed`) |
+| `INVALID_ANSWER_VALUE` | 422 | valor fora da escala (`details.allowed`; o valor recebido não é ecoado) |
 | `PII_GUARD_VIOLATION` | 500 | tentativa de gravar PII num evento — bug interno, nunca deve ocorrer |
-| `CONFIGURATION_ERROR` | — | artefato JSON/YAML inválido: a aplicação não sobe |
+| `CONFIGURATION_ERROR` | 500 | artefato JSON/YAML inválido (a aplicação não sobe no boot); em runtime, sessão pinada numa versão de template diferente da carregada — falha explícita em vez de pontuar com outro template |
 
 ---
 
 ## 9. Testes
 
 ```bash
-make test          # tudo (unit + integration + e2e), ~4s, sem rede
-make test-cov      # com cobertura; o gate exige ≥ 90% (está em ~97%)
+make test          # tudo (unit + integration + e2e), ~12s, sem rede
+make test-cov      # com cobertura; o gate exige ≥ 90% (está em ~98%)
 make check         # lint + mypy + cobertura + invariantes do enunciado
 ```
 
@@ -350,10 +350,11 @@ Na ordem em que eu atacaria:
 1. **Firestore atrás das portas existentes.** `EventStore` e repositórios viram `async`; a coleção de eventos ganha regra de segurança *create-only* para que a imutabilidade valha também no banco, não só no código.
 2. **Crypto-shredding.** Uma chave por paciente cifrando o cadastro operacional; `revoke` destrói a chave. O apagamento passa a ser criptograficamente garantido, inclusive em backups.
 3. **Contrato de eventos versionado para analytics.** `schema_version` já existe; faltam schemas por `event_name` (Pydantic) validando `properties` no `append` e um export em JSONL/Avro pensado para BigQuery.
-4. **Idempotency-Key** em `POST …/answers`, `…/complete` e `/followups/evaluate` — webhooks da Meta reentregam.
-5. **Auto-avaliação de follow-up** ao concluir tarefa, atrás de flag, com o mesmo motor.
-6. **Decisões clínicas/produto que eu não tomaria sozinho** — só apontaria: um plano de jornada por faixa de score; sinalização determinística do item 9 do PHQ-9 (é prática consolidada, mas o enunciado veta lógica clínica adicional e a AINA se declara não-clínica, então isso é conversa com o time clínico, não código).
-7. **Observabilidade**: métricas por `event_name`/`reason` e tracing com `correlation_id` já presente no envelope.
+4. **Unidade de trabalho por request (ou outbox).** Hoje o service muta o repositório e depois grava o evento; se o `append` falhasse entre os dois, a invariante "toda transição emite evento" quebraria naquela janela. Em memória isso é teórico (a única exceção possível é a guarda de PII, que não dispara com properties validadas), mas com Firestore vira transação/outbox de verdade.
+5. **Idempotency-Key** em `POST …/answers`, `…/complete` e `/followups/evaluate` — webhooks da Meta reentregam.
+6. **Auto-avaliação de follow-up** ao concluir tarefa, atrás de flag, com o mesmo motor.
+7. **Decisões clínicas/produto que eu não tomaria sozinho** — só apontaria: um plano de jornada por faixa de score; sinalização determinística do item 9 do PHQ-9 (é prática consolidada, mas o enunciado veta lógica clínica adicional e a AINA se declara não-clínica, então isso é conversa com o time clínico, não código).
+8. **Observabilidade**: métricas por `event_name`/`reason` e tracing com `correlation_id` já presente no envelope.
 
 ---
 

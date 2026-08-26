@@ -20,6 +20,10 @@ class SkipReason(StrEnum):
     COOLDOWN = "cooldown"
 
 
+# Comparadores que exigem um observado numérico (o loader recusa em checks textuais).
+ORDERING_OPERATORS: frozenset[str] = frozenset({"gt", "gte", "lt", "lte"})
+
+
 class Expectation(BaseModel):
     """Exatamente um comparador: equals | not_equals | in | gt | gte | lt | lte."""
 

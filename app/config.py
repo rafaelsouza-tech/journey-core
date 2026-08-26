@@ -64,9 +64,13 @@ def load_settings() -> Settings:
     try:
         return Settings()  # campos obrigatórios vêm do ambiente
     except ValidationError as exc:
-        missing = ", ".join(str(err["loc"][0]) for err in exc.errors())
+        problems = "; ".join(
+            f"{'.'.join(str(part) for part in err['loc'])}: {err['msg']}" for err in exc.errors()
+        )
+        # `from None`: o erro original do Pydantic carrega o valor recebido — no caso do
+        # salt, um segredo — e iria parar no traceback impresso no boot.
         raise RuntimeError(
-            f"Configuração inválida ({missing}). "
+            f"Configuração inválida ({problems}). "
             "Copie .env.example para .env e defina PHONE_HASH_SALT "
             "(ex.: `openssl rand -hex 32`) — ou rode `make setup`."
-        ) from exc
+        ) from None

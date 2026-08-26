@@ -14,18 +14,23 @@ import re
 PHONE_MIN_DIGITS = 10
 PHONE_MAX_DIGITS = 15  # limite do padrão E.164
 
-_NON_DIGITS = re.compile(r"\D")
+# Só dígitos ASCII e os separadores usuais (`+` apenas à frente). Letras ou dígitos de
+# outros alfabetos não são "formatação": são entrada inválida, não algo a descartar.
+_PHONE_FORMAT = re.compile(r"^\+?[0-9\s().\-]+$")
+_SEPARATORS = re.compile(r"[^0-9]")
 
 
 def normalize_phone(phone: str) -> str:
     """
-    Reduz o telefone a dígitos e valida o tamanho (10–15, padrão E.164).
+    Reduz o telefone a dígitos e valida formato e tamanho (10–15, padrão E.164).
 
     Raises:
-        ValueError: se o telefone não tiver entre 10 e 15 dígitos. A mensagem nunca
-            inclui o valor recebido.
+        ValueError: se houver caracteres além de dígitos e separadores, ou se o telefone
+            não tiver entre 10 e 15 dígitos. A mensagem nunca inclui o valor recebido.
     """
-    digits = _NON_DIGITS.sub("", phone)
+    if not _PHONE_FORMAT.fullmatch(phone):
+        raise ValueError("telefone deve conter apenas dígitos e os separadores + - ( ) . e espaço")
+    digits = _SEPARATORS.sub("", phone)
     if not PHONE_MIN_DIGITS <= len(digits) <= PHONE_MAX_DIGITS:
         raise ValueError(f"telefone deve ter entre {PHONE_MIN_DIGITS} e {PHONE_MAX_DIGITS} dígitos")
     return digits

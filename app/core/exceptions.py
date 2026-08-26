@@ -171,11 +171,10 @@ class UnexpectedQuestionError(ConflictError):
 class InvalidAnswerValueError(ValidationError):
     error_code = "INVALID_ANSWER_VALUE"
 
-    def __init__(self, value: int, allowed: list[int]) -> None:
-        super().__init__(
-            f"Valor {value} fora da escala do protocolo",
-            details={"value": value, "allowed": allowed},
-        )
+    def __init__(self, allowed: list[int]) -> None:
+        # Sem o valor recebido: respostas de erro não ecoam a entrada (um número
+        # "fora da escala" pode ser um telefone digitado no campo errado).
+        super().__init__("Valor fora da escala do protocolo", details={"allowed": allowed})
 
 
 # -----------------------------------------------------------------------------

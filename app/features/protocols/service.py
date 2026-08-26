@@ -4,6 +4,7 @@ from uuid import UUID, uuid4
 
 from app.core.clock import Clock
 from app.core.exceptions import (
+    ConfigurationError,
     InvalidAnswerValueError,
     SessionAlreadyCompletedError,
     SessionInProgressError,
@@ -47,7 +48,8 @@ class ProtocolService:
         Inicia uma sessão. Exige consentimento ativo; uma sessão em andamento por template.
 
         Raises:
-            PatientNotFoundError, ConsentRequiredError, TemplateNotFoundError, SessionInProgressError
+            PatientNotFoundError, ConsentRequiredError, TemplateNotFoundError,
+            SessionInProgressError
         """
         patient = self._patients.get(patient_id)
         require_active_consent(patient)
@@ -80,15 +82,24 @@ class ProtocolService:
 
     def get(self, session_id: UUID) -> tuple[ProtocolSession, ProtocolTemplate]:
         """
-        Sessão + template (na versão em que a sessão foi iniciada).
+        Sessão + template na versão pinada no início.
+
+        Se o template carregado tiver outra versão, a sessão não segue com perguntas e
+        pontuação de um template diferente do que ela declara: falha explicitamente.
 
         Raises:
-            SessionNotFoundError
+            SessionNotFoundError, ConfigurationError
         """
         session = self._sessions.get(session_id)
         if session is None:
             raise SessionNotFoundError(session_id)
-        return session, self._templates.get(session.template_id)
+        template = self._templates.get(session.template_id)
+        if template.version != session.template_version:
+            raise ConfigurationError(
+                f"sessão pinada na versão {session.template_version} do template "
+                f"'{session.template_id}', mas a versão carregada é {template.version}"
+            )
+        return session, template
 
     def answer(
         self, session_id: UUID, question_id: str, value: int
@@ -112,7 +123,7 @@ class ProtocolService:
         if expected is None or expected.id != question_id:
             raise UnexpectedQuestionError(expected.id if expected else "<none>", question_id)
         if value not in template.scale.allowed_values:
-            raise InvalidAnswerValueError(value, template.scale.allowed_values)
+            raise InvalidAnswerValueError(template.scale.allowed_values)
 
         session.answers, outcome = apply_answer(template, session.answers, question_id, value)
         if not outcome.completed:

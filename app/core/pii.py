@@ -55,6 +55,20 @@ def looks_like_phone(text: str) -> bool:
     return False
 
 
+def is_phone_like(value: Any) -> bool:
+    """
+    Valor escalar com cara de telefone.
+
+    Texto: ver `looks_like_phone`. Inteiro (não booleano) com 10–15 dígitos: um telefone
+    convertido para número escaparia da detecção textual.
+    """
+    if isinstance(value, bool):
+        return False
+    if isinstance(value, int):
+        return PHONE_MIN_DIGITS <= len(str(abs(value))) <= PHONE_MAX_DIGITS
+    return isinstance(value, str) and looks_like_phone(value)
+
+
 def find_pii(data: Any, path: str = "$") -> list[str]:
     """
     Percorre recursivamente `data` e devolve as violações encontradas.
@@ -74,7 +88,7 @@ def find_pii(data: Any, path: str = "$") -> list[str]:
     elif isinstance(data, list | tuple | set | frozenset):
         for index, item in enumerate(data):
             violations.extend(find_pii(item, f"{path}[{index}]"))
-    elif isinstance(data, str) and looks_like_phone(data):
+    elif is_phone_like(data):
         violations.append(f"{path} (phone_like_value)")
     return violations
 
@@ -88,6 +102,6 @@ def redact(data: Any) -> Any:
         }
     if isinstance(data, list | tuple):
         return [redact(item) for item in data]
-    if isinstance(data, str) and looks_like_phone(data):
+    if is_phone_like(data):
         return "[redacted]"
     return data

@@ -4,20 +4,31 @@ from uuid import UUID
 
 from pydantic import Field
 
-from app.features.protocols.models import ProtocolSession, ProtocolTemplate, SessionStatus
+from app.features.protocols.engine import next_question
+from app.features.protocols.models import (
+    IDENTIFIER_PATTERN,
+    ProtocolSession,
+    ProtocolTemplate,
+    SessionStatus,
+)
 from app.shared.schemas import BaseSchema
+
+# Ids fora do formato dos templates são recusados na validação (422, sem eco da entrada):
+# assim nenhuma mensagem de 404/409 repete o que o cliente enviou.
 
 
 class StartProtocolRequest(BaseSchema):
-    template_id: str = Field(examples=["phq9"])
+    template_id: str = Field(pattern=IDENTIFIER_PATTERN, examples=["phq9"])
 
 
 class AnswerRequest(BaseSchema):
     question_id: str = Field(
+        pattern=IDENTIFIER_PATTERN,
         description="Id da pergunta que está sendo respondida (a próxima esperada)",
         examples=["q1"],
     )
-    value: int = Field(description="Valor na escala do template", examples=[1])
+    # strict: `true`/"1" não viram 1 por coerção — a pontuação soma só inteiros explícitos.
+    value: int = Field(strict=True, description="Valor inteiro na escala do template", examples=[1])
 
 
 class ScaleOptionResponse(BaseSchema):
@@ -63,8 +74,6 @@ class ProtocolStepResponse(BaseSchema):
     def from_session(
         cls, session: ProtocolSession, template: ProtocolTemplate
     ) -> "ProtocolStepResponse":
-        from app.features.protocols.engine import next_question
-
         pending = None if session.is_completed else next_question(template, session.answers)
         options = [
             ScaleOptionResponse(value=o.value, label=o.label) for o in template.scale.options

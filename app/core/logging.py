@@ -13,7 +13,7 @@ from typing import Any
 
 import structlog
 
-from app.core.pii import is_forbidden_key, looks_like_phone
+from app.core.pii import is_forbidden_key, is_phone_like
 
 _PROTECTED_KEYS = frozenset({"event", "level", "logger", "timestamp", "request_id"})
 _HANDLER_TAG = "journey_core_handler"
@@ -25,8 +25,7 @@ def redact_pii(
     """Processor structlog: redige PII no dicionário de log."""
     for key in list(event_dict.keys()):
         if key in _PROTECTED_KEYS:
-            value = event_dict[key]
-            if isinstance(value, str) and looks_like_phone(value):
+            if is_phone_like(event_dict[key]):
                 event_dict[key] = "[redacted]"
             continue
         if is_forbidden_key(key):
@@ -37,8 +36,8 @@ def redact_pii(
 
 
 def _redact_value(value: Any) -> Any:
-    if isinstance(value, str):
-        return "[redacted]" if looks_like_phone(value) else value
+    if is_phone_like(value):
+        return "[redacted]"
     if isinstance(value, dict):
         return {
             k: ("[redacted]" if is_forbidden_key(str(k)) else _redact_value(v))

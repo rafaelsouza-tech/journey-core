@@ -14,6 +14,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+# Formato dos identificadores do template (template_id, ids de perguntas e de regras).
+# Reutilizado pelos contratos da API: o que não casa é 422 antes de chegar ao serviço.
+IDENTIFIER_PATTERN = r"^[a-z][a-z0-9_]*$"
+
 # -----------------------------------------------------------------------------
 # Template (schema do JSON)
 # -----------------------------------------------------------------------------
@@ -51,13 +55,21 @@ class Scoring(_Strict):
 
 
 class Question(_Strict):
-    id: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
+    id: str = Field(pattern=IDENTIFIER_PATTERN)
     order: int = Field(ge=1)
     text: str = Field(min_length=1)
 
 
 class SumOf(_Strict):
     sum_of: list[str] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _unique_ids(self) -> "SumOf":
+        if len(set(self.sum_of)) != len(self.sum_of):
+            raise ValueError(
+                "ids em sum_of devem ser únicos (repetir contaria a resposta duas vezes)"
+            )
+        return self
 
 
 class AnswerRef(_Strict):
@@ -88,7 +100,7 @@ class SkipAction(StrEnum):
 
 
 class SkipRule(_Strict):
-    id: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
+    id: str = Field(pattern=IDENTIFIER_PATTERN)
     description: str | None = None
     after_question: str
     condition: Condition
@@ -98,7 +110,7 @@ class SkipRule(_Strict):
 class ProtocolTemplate(_Strict):
     """Template de protocolo carregado do JSON."""
 
-    template_id: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
+    template_id: str = Field(pattern=IDENTIFIER_PATTERN)
     version: int = Field(ge=1)
     name: str = Field(min_length=1)
     description: str | None = None

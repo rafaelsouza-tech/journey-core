@@ -9,7 +9,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class PlanTask(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    # `str_strip_whitespace`: um título só de espaços não passa pelo `min_length`.
+    model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
 
     key: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
     title: str = Field(min_length=1)
@@ -18,7 +19,7 @@ class PlanTask(BaseModel):
 class JourneyPlan(BaseModel):
     """Plano declarativo por `template_id`: objetivo + tarefas iniciais."""
 
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
 
     template_id: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
     version: int = Field(ge=1)

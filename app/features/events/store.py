@@ -14,7 +14,7 @@ from uuid import uuid4
 from app.core.clock import Clock
 from app.core.logging import current_request_id, get_logger
 from app.features.events.models import Event, EventName
-from app.features.events.pii_guard import validate_properties
+from app.features.events.pii_guard import validate_patient_id_hash, validate_properties
 from app.shared.serialization import json_safe
 
 logger = get_logger(__name__)
@@ -59,8 +59,9 @@ class InMemoryEventStore:
         patient_id_hash: str,
         properties: Mapping[str, Any] | None = None,
     ) -> Event:
-        """Valida (PII), congela e grava o evento."""
+        """Valida (PII no hash e nas properties), congela e grava o evento."""
         safe_properties = json_safe(properties or {})
+        validate_patient_id_hash(event_name, patient_id_hash)
         validate_properties(event_name, safe_properties)
         event = Event(
             event_id=uuid4(),

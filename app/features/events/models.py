@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
+from types import MappingProxyType
 from typing import Any
 from uuid import UUID
 
@@ -34,6 +35,11 @@ class EventName(StrEnum):
 EVENT_SCHEMA_VERSION = 1
 
 
+def _empty_properties() -> Mapping[str, Any]:
+    """Default somente leitura — um `dict` vazio seria mutável mesmo num dataclass frozen."""
+    return MappingProxyType({})
+
+
 @dataclass(frozen=True, slots=True)
 class Event:
     """
@@ -47,6 +53,6 @@ class Event:
     occurred_at: datetime
     event_name: EventName
     patient_id_hash: str
-    properties: Mapping[str, Any] = field(default_factory=dict)
+    properties: Mapping[str, Any] = field(default_factory=_empty_properties)
     schema_version: int = EVENT_SCHEMA_VERSION
     correlation_id: str | None = None
