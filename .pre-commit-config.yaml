@@ -1,0 +1,48 @@
+# Instalação: uv run pre-commit install
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-added-large-files
+        args: ["--maxkb=500"]
+      - id: check-merge-conflict
+      - id: detect-private-key
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
+    hooks:
+      - id: ruff
+        args: ["--fix"]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.14.1
+    hooks:
+      - id: mypy
+        files: ^app/
+        additional_dependencies:
+          - pydantic>=2.9
+          - pydantic-settings>=2.6
+          - structlog>=24.4
+          - types-PyYAML
+          - fastapi>=0.115
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.23.1
+    hooks:
+      - id: gitleaks
+
+  - repo: local
+    hooks:
+      - id: block-dotenv
+        name: bloqueia commit de .env
+        entry: bash -c 'if git diff --cached --name-only | grep -qE "(^|/)\.env$"; then echo "✗ .env não pode ser commitado"; exit 1; fi'
+        language: system
+        pass_filenames: false
+
+default_language_version:
+  python: python3.12

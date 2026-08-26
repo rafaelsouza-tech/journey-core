@@ -1,0 +1,16 @@
+# Configuração do gitleaks: regras padrão + allowlist do que é sabidamente fictício.
+title = "journey-core"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Valores de teste/documentação, explicitamente não-secretos"
+paths = [
+  '''\.env\.example$''',
+  '''uv\.lock$''',
+]
+regexes = [
+  '''test-salt-0123456789abcdef-not-a-secret''',
+  '''ci-only-salt-not-a-secret-0123456789''',
+]

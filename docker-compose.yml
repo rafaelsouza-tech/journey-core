@@ -1,0 +1,19 @@
+services:
+  api:
+    build: .
+    container_name: journey-core
+    ports:
+      - "8000:8000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      LOG_FORMAT: ${LOG_FORMAT:-console}
+      # Sem salt não sobe: rode `make setup` (gera o .env) ou exporte a variável.
+      PHONE_HASH_SALT: ${PHONE_HASH_SALT:?Defina PHONE_HASH_SALT (rode make setup)}
+    healthcheck:
+      test: ["CMD", "/opt/venv/bin/python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).status == 200 else 1)"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
