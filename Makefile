@@ -50,7 +50,7 @@ dev: ## Sobe a API com hot reload em http://localhost:8000 (PORT=… para trocar
 run: ## Sobe a API sem reload
 	$(UV) run uvicorn app.main:create_app --factory --host 0.0.0.0 --port $(PORT)
 
-demo: ## Executa o roteiro do revisor de ponta a ponta (in-process; --base-url para API no ar)
+demo: ## Demonstração de ponta a ponta (in-process; --base-url para API no ar)
 	$(UV) run python scripts/demo.py $(ARGS)
 
 # -----------------------------------------------------------------------------
@@ -66,7 +66,7 @@ test-unit: ## Só testes unitários
 test-integration: ## Só testes de integração (endpoints)
 	$(UV) run pytest -m integration
 
-test-e2e: ## Só o walkthrough do revisor
+test-e2e: ## Só o fluxo de ponta a ponta
 	$(UV) run pytest -m e2e
 
 test-cov: ## Testes com cobertura (falha abaixo de 90%)

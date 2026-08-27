@@ -1,4 +1,4 @@
-"""O roteiro de ~15 minutos do enunciado (seção 7), mais o passo 5 da proposta."""
+"""Fluxo de ponta a ponta: cadastro → protocolo → jornada → follow-up → trilha → revogação."""
 
 from typing import Any
 
@@ -22,7 +22,7 @@ MINIMUM_TAXONOMY = {
 }
 
 
-def test_reviewer_walkthrough(client: TestClient, clock: FixedClock) -> None:
+def test_end_to_end_walkthrough(client: TestClient, clock: FixedClock) -> None:
     # 1. Criar paciente
     created = client.post("/patients", json=patient_payload())
     assert created.status_code == 201
@@ -68,7 +68,7 @@ def test_reviewer_walkthrough(client: TestClient, clock: FixedClock) -> None:
     ]
     assert {e["event_name"] for e in events} >= MINIMUM_TAXONOMY
 
-    # 5. (Proposta) Revogar consentimento: cadastro apagado, trilha intacta, follow-up recusado
+    # 5. Revogar consentimento: cadastro apagado, trilha intacta, follow-up recusado
     revoked = client.post(f"/patients/{patient['id']}/consent/revoke").json()
     assert revoked["consent_status"] == "revoked" and revoked["name"] is None
     after = client.get("/events", params={"patient_id": patient["id"]}).json()["data"]

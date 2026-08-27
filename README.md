@@ -1,5 +1,14 @@
 # journey-core
 
+[![CI](https://github.com/rafaelsouza-tech/journey-core/actions/workflows/ci.yml/badge.svg)](https://github.com/rafaelsouza-tech/journey-core/actions/workflows/ci.yml)
+[![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.141-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Pydantic v2](https://img.shields.io/badge/Pydantic-v2-E92063?logo=pydantic&logoColor=white)](https://docs.pydantic.dev/)
+[![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![mypy](https://img.shields.io/badge/mypy-strict-blue)](https://mypy-lang.org/)
+[![coverage](https://img.shields.io/badge/coverage-99%25-brightgreen)](#9-testes)
+
 Núcleo determinístico de uma jornada de saúde: **consentimento**, **protocolo clínico data-driven** (PHQ-9 com skip logic PHQ-2), **jornada com tarefas**, **trilha de eventos append-only sem PII** e **elegibilidade de follow-up** por regras declarativas.
 
 É o miolo que um agente conversacional usaria por baixo da conversa. Aqui não há chatbot, WhatsApp nem LLM: pontuação, consentimento, trilha e a decisão de "quem recebe um follow-up" são **regras + dados**, auditáveis e reproduzíveis.
@@ -11,7 +20,7 @@ Núcleo determinístico de uma jornada de saúde: **consentimento**, **protocolo
 ## Sumário
 
 1. [Como rodar](#1-como-rodar)
-2. [Roteiro de 15 minutos](#2-roteiro-de-15-minutos)
+2. [Demonstração de ponta a ponta](#2-demonstração-de-ponta-a-ponta)
 3. [Endpoints](#3-endpoints)
 4. [Arquitetura](#4-arquitetura)
 5. [Decisões de desenho](#5-decisões-de-desenho)
@@ -22,6 +31,7 @@ Núcleo determinístico de uma jornada de saúde: **consentimento**, **protocolo
 10. [Cobertura do enunciado](#10-cobertura-do-enunciado)
 11. [O que ficou de fora](#11-o-que-ficou-de-fora)
 12. [O 4º dia](#12-o-4º-dia)
+13. [Autor](#autor)
 
 ---
 
@@ -33,7 +43,7 @@ Núcleo determinístico de uma jornada de saúde: **consentimento**, **protocolo
 make setup     # uv sync + cria .env com PHONE_HASH_SALT gerado
 make dev       # http://localhost:8000 — Swagger em /docs (outra porta: make dev PORT=8765)
 make test      # suíte pytest (sem rede, sem credenciais)
-make demo      # roteiro do revisor, de ponta a ponta, em ~1s
+make demo      # demonstração de ponta a ponta, em ~1s
 ```
 
 `make help` lista todos os alvos. Sem `make`:
@@ -68,9 +78,9 @@ A única variável obrigatória é `PHONE_HASH_SALT` (mínimo 16 caracteres). Se
 
 ---
 
-## 2. Roteiro de 15 minutos
+## 2. Demonstração de ponta a ponta
 
-É o critério de "pronto" do enunciado (seção 7), mais um passo 5. `make demo` executa exatamente isto e imprime cada resposta, sem dependências externas; abaixo, a versão manual contra `make dev` (pré-requisitos: `curl` e `jq`).
+Do cadastro à decisão de follow-up, com a trilha de eventos no final — em cinco passos. `make demo` executa exatamente isto e imprime cada resposta, sem dependências externas; abaixo, a versão manual contra `make dev` (pré-requisitos: `curl` e `jq`).
 
 ```bash
 BASE=http://localhost:8000
@@ -104,7 +114,7 @@ curl -s -X POST $BASE/followups/evaluate -H 'content-type: application/json' \
 curl -s "$BASE/events?patient_id=$PID" | jq '.data[] | {event_name, properties}'
 curl -s "$BASE/events?patient_id=$PID" | grep -c "90000-0000\|Paciente Exemplo\|1990-05-20"   # → 0
 
-# 5. (Proposta) Revogar o consentimento: cadastro apagado, trilha intacta, follow-up recusado
+# 5. Revogar o consentimento: cadastro apagado, trilha intacta, follow-up recusado
 curl -s -X POST $BASE/patients/$PID/consent/revoke | jq '{consent_status, name, birth_date}'
 curl -s -X POST $BASE/followups/evaluate -H 'content-type: application/json' \
   -d "{\"patient_id\": \"$PID\"}" | jq '{eligible, reason}'
@@ -220,7 +230,7 @@ Cada feature segue o mesmo padrão: `models.py` (entidades e schema dos artefato
 - **Robustez à entrega duplicada.** `POST …/answers` exige o `question_id` esperado (409 `UNEXPECTED_QUESTION` se vier fora de ordem ou repetido); concluir uma tarefa já concluída é 409 sem evento duplicado; só uma sessão em andamento por paciente/template.
 - **Jornada só nasce de protocolo concluído.** Não existe `POST /journeys`; a criação é estrutural, e um teste afirma a ausência do endpoint.
 - **Rotas `async def`, services síncronos.** Sem I/O não há o que aguardar; com rotas async cada request roda no loop, o que serializa as mutações dos dicionários em memória. Quando a persistência virar Firestore, só a fronteira `repository`/`store` vira `async`.
-- **Sem disparo automático de follow-up ao concluir tarefa.** O enunciado permite; preferi o endpoint explícito para o cooldown ser observável no roteiro (um disparo automático o consumiria). Vira flag de configuração quando fizer sentido.
+- **Sem disparo automático de follow-up ao concluir tarefa.** O enunciado permite; preferi o endpoint explícito para o cooldown ser observável na demonstração (um disparo automático o consumiria). Vira flag de configuração quando fizer sentido.
 - **Valores de status em português, campos em inglês.** `em_andamento | concluida` são os literais do enunciado; nomes de campos seguem o restante da API (`objective`, `tasks`, `title`).
 - **Bibliotecas extras**, além da stack sugerida: `structlog` (logs estruturados com processors — é o que torna a redação de PII um mecanismo, não uma convenção), `pyyaml` (regras com comentários), `httpx`/`httpx2` (só dev: TestClient e `make demo`), `ruff` + `mypy` (qualidade; `mypy --disallow-untyped-defs` torna "type hints nas assinaturas públicas" um gate mecânico).
 
@@ -248,7 +258,7 @@ pending ──accept──▶ accepted ──pause──▶ paused
 
 **A decisão de follow-up é explicável.** `POST /followups/evaluate` avalia todas as regras e devolve o `trace` (observado, esperado, passou, detalhes); o mesmo trace vai para as `properties` do evento. Quem lê a trilha entende *por que* aquele paciente recebeu ou não o follow-up — inclusive quanto faltava para o cooldown acabar. É a contrapartida técnica de dois princípios que a AINA publica: *"você sempre entende por que algo foi sugerido"* e *"pause, exporte ou apague seus dados quando quiser"*.
 
-O roteiro da seção 2 (passo 5) e `tests/integration/test_consent_lifecycle.py` demonstram tudo isso.
+A demonstração da seção 2 (passo 5) e `tests/integration/test_consent_lifecycle.py` cobrem tudo isso.
 
 ---
 
@@ -308,7 +318,7 @@ make check         # lint + mypy + cobertura + invariantes do enunciado
 | Cooldown de 72h | `test_followups_api::test_second_evaluation_within_72h_is_skipped_by_cooldown`, `…::test_eligible_again_after_72h`, `unit/test_rules_engine::test_cooldown_boundary_is_72_hours_inclusive` |
 | Jornada criada somente após protocolo | `test_journeys_api::test_no_journey_before_protocol_completion`, `…::test_there_is_no_endpoint_to_create_a_journey_directly` |
 | Template é a única fonte | `unit/test_template_loader::test_service_and_engine_have_no_template_specific_branching` (+ comparação literal do JSON com a seção 4 do enunciado) |
-| Roteiro do revisor | `e2e/test_reviewer_walkthrough.py` (sequência exata dos eventos) |
+| Fluxo de ponta a ponta | `e2e/test_end_to_end_walkthrough.py` (sequência exata dos eventos) |
 | Proposta | `integration/test_consent_lifecycle.py`, `unit/test_consent_transitions.py` |
 
 Cada teste cria sua própria aplicação (`create_app()` com `FixedClock`): não há estado global entre testes.
@@ -316,6 +326,8 @@ Cada teste cria sua própria aplicação (`create_app()` com `FixedClock`): não
 ---
 
 ## 10. Cobertura do enunciado
+
+O enunciado completo está em [`docs/AINA_Desafio_Tecnico_Candidato.pdf`](docs/AINA_Desafio_Tecnico_Candidato.pdf).
 
 | Seção | Exigência | Onde | Prova |
 |---|---|---|---|
@@ -332,7 +344,7 @@ Cada teste cria sua própria aplicação (`create_app()` com `FixedClock`): não
 | 4 | Enunciado literal, escala literal, pergunta-guia; skip = `end_block`, `ended_by_skip=true`, score parcial; sem fórmulas | `phq9.json` (`scoring.method: sum`) | `test_template_loader::test_phq9_template_matches_the_specification_literally` |
 | 5 | Sem WhatsApp/LLM/dashboard/auth/GUI/fórmulas clínicas | `pyproject.toml` (sem SDKs de IA) | `make check` (grep negativo) |
 | 6 | Python 3.12, FastAPI, Pydantic v2, pytest, uv ou pip; Docker Compose | `pyproject.toml`, `Dockerfile`, `docker-compose.yml` | CI (`pip install .` também) |
-| 7 | Revisor: subir, criar paciente → PHQ → jornada, avaliar 2× com cooldown, `GET /events` sem PII | §1, §2, `make demo` | `e2e/test_reviewer_walkthrough.py` |
+| 7 | Subir a API, criar paciente → PHQ → jornada, avaliar 2× com cooldown, `GET /events` sem PII | §1, §2, `make demo` | `e2e/test_end_to_end_walkthrough.py` |
 
 ---
 
@@ -372,10 +384,17 @@ Na ordem em que eu atacaria:
 journey-core/
 ├── app/                      código de aplicação (ver §4)
 ├── tests/                    unit · integration · e2e (conftest com app isolada por teste)
-├── scripts/demo.py           roteiro do revisor executável
+├── scripts/demo.py           demonstração de ponta a ponta executável
+├── docs/                     enunciado do desafio (PDF)
 ├── Makefile                  make help
 ├── Dockerfile · docker-compose.yml
 ├── .github/workflows/ci.yml  ruff · mypy · pytest+cobertura · invariantes · pip install · gitleaks
 ├── .pre-commit-config.yaml · .gitleaks.toml
 └── pyproject.toml · uv.lock · .python-version · .env.example
 ```
+
+---
+
+## Autor
+
+**Rafael Souza** · [rafael@rafaelsouza.me](mailto:rafael@rafaelsouza.me) · [github.com/rafaelsouza-tech](https://github.com/rafaelsouza-tech)

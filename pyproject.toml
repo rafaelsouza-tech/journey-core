@@ -5,7 +5,7 @@ description = "Núcleo determinístico de uma jornada de saúde: consentimento, 
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "Proprietary" }
-authors = [{ name = "Rafael Souza" }]
+authors = [{ name = "Rafael Souza", email = "rafael@rafaelsouza.me" }]
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",

@@ -1,5 +1,5 @@
 """
-Roteiro do revisor, executável de ponta a ponta.
+Demonstração de ponta a ponta: cadastro → protocolo → jornada → follow-up → trilha → revogação.
 
     make demo                                            # in-process, relógio controlável
     make demo ARGS="--base-url http://localhost:8000"    # contra a API no ar
@@ -77,7 +77,7 @@ def fake_phone() -> str:
 
 
 # -----------------------------------------------------------------------------
-# Passos do roteiro (seção 7 do enunciado + passo 5 da proposta)
+# Passos da demonstração
 # -----------------------------------------------------------------------------
 
 
@@ -174,7 +174,7 @@ def step_inspect_trail(client: httpx.Client, patient_id: str, payload: JSON) -> 
 
 
 def step_revoke_consent(client: httpx.Client, patient_id: str, events_before: int) -> None:
-    banner("5. Proposta — revogar consentimento: cadastro apagado, trilha intacta")
+    banner("5. Revogar consentimento: cadastro apagado, trilha intacta")
     revoked = show(
         "POST /patients/{id}/consent/revoke",
         client.post(f"/patients/{patient_id}/consent/revoke"),
@@ -205,7 +205,7 @@ def step_revoke_consent(client: httpx.Client, patient_id: str, events_before: in
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Roteiro do revisor (seção 7 do enunciado)")
+    parser = argparse.ArgumentParser(description="Demonstração de ponta a ponta da API")
     parser.add_argument("--base-url", help="URL da API no ar (padrão: in-process)")
     args = parser.parse_args()
     client, clock = build_client(args.base_url)
@@ -221,7 +221,7 @@ def main() -> int:
         print(f"\n\033[1;31m✗ {failure}\033[0m")
         return 1
 
-    print("\n\033[1;32m✓ roteiro concluído\033[0m")
+    print("\n\033[1;32m✓ demonstração concluída\033[0m")
     return 0
 
 
