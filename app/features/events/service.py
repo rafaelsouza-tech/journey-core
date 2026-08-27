@@ -2,16 +2,15 @@
 
 from uuid import UUID
 
-from app.core.exceptions import PatientNotFoundError
 from app.features.events.models import Event, EventName
 from app.features.events.store import EventStore
-from app.features.patients.repository import PatientRepository
+from app.features.patients.service import PatientService
 
 
 class EventService:
-    """Resolve o id interno do paciente para o hash e lista a trilha."""
+    """Resolve o id interno do paciente para o hash e lista a trilha daquele cadastro."""
 
-    def __init__(self, patients: PatientRepository, store: EventStore) -> None:
+    def __init__(self, patients: PatientService, store: EventStore) -> None:
         self._patients = patients
         self._store = store
 
@@ -19,7 +18,7 @@ class EventService:
         self, patient_id: UUID, event_name: EventName | None = None
     ) -> tuple[str, list[Event]]:
         """
-        Trilha do paciente.
+        Trilha do cadastro: do seu `patient_created` em diante.
 
         Returns:
             Tupla `(patient_id_hash, eventos)`.
@@ -28,6 +27,7 @@ class EventService:
             PatientNotFoundError: se o id interno não existir.
         """
         patient = self._patients.get(patient_id)
-        if patient is None:
-            raise PatientNotFoundError(patient_id)
-        return patient.phone_hash, self._store.list_by_patient_hash(patient.phone_hash, event_name)
+        events = self._store.list_by_patient_hash(
+            patient.phone_hash, event_name, trail_id=patient.trail_start_event_id
+        )
+        return patient.phone_hash, events

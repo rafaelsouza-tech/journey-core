@@ -26,22 +26,8 @@ jobs:
       - name: Dependências
         run: uv sync --frozen
 
-      - name: Ruff (lint)
-        run: uv run ruff check app tests scripts
-
-      - name: Ruff (formatação)
-        run: uv run ruff format --check app tests scripts
-
-      - name: Mypy
-        run: uv run mypy app
-
-      - name: Pytest + cobertura
-        run: uv run pytest --cov=app --cov-report=term-missing --cov-report=xml --cov-fail-under=90
-
-      - name: Invariantes do enunciado
-        run: |
-          ! grep -rnE 'template_id\s*(==|!=)\s*["'"'"']' app/
-          ! grep -rniE 'openai|anthropic|langchain|langgraph|langfuse|vertex' pyproject.toml app/
+      - name: Gate completo (lint · tipos · testes com cobertura · invariantes)
+        run: make check
 
       - name: Instalação via pip também funciona
         run: |

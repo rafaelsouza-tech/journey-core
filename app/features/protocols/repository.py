@@ -28,6 +28,3 @@ class ProtocolSessionRepository(InMemoryRepository[ProtocolSession]):
             session.patient_id == patient_id and session.status is SessionStatus.COMPLETED
             for session in self.all()
         )
-
-    def list_by_patient(self, patient_id: UUID) -> list[ProtocolSession]:
-        return self.filter(lambda session: session.patient_id == patient_id)

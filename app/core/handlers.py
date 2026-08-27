@@ -17,7 +17,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.exceptions import JourneyCoreError
 from app.core.logging import get_logger
-from app.core.middleware import REQUEST_ID_HEADER
+from app.core.middleware import REQUEST_ID_HEADER, route_template
 from app.core.pii import is_phone_like
 from app.shared.schemas import ErrorDetail, ErrorResponse
 
@@ -98,7 +98,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
         error_type=type(exc).__name__,
         request_id=getattr(request.state, "request_id", None),
         method=request.method,
-        path=request.url.path,
+        route=route_template(request),
     )
     return _envelope(request, 500, "INTERNAL_ERROR", "Erro interno")
 

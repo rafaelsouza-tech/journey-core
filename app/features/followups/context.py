@@ -22,7 +22,9 @@ def build_context(
     latest = journeys.latest_for_patient(patient.id)
 
     def last_event_at(event_name: EventName) -> datetime | None:
-        event = events.last_by_name(patient.phone_hash, event_name)
+        event = events.last_by_name(
+            patient.phone_hash, event_name, trail_id=patient.trail_start_event_id
+        )
         return event.occurred_at if event is not None else None
 
     return EligibilityContext(

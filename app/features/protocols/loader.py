@@ -36,6 +36,3 @@ class TemplateRegistry:
 
     def ids(self) -> list[str]:
         return list(self._templates)
-
-    def __len__(self) -> int:
-        return len(self._templates)

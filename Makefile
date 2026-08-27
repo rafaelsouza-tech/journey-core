@@ -13,13 +13,13 @@ YELLOW := \033[1;33m
 NC := \033[0m
 
 .PHONY: help setup install dev run test test-cov test-unit test-integration test-e2e \
-        lint format typecheck secrets check demo docker-build docker-up docker-down clean
+        lint format typecheck secrets invariants check demo docker-build docker-up docker-down clean
 
 help: ## Lista os comandos disponíveis
 	@echo ""
 	@echo "$(BLUE)journey-core$(NC)"
 	@echo ""
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-18s$(NC) %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-18s$(NC) %s\n", $$1, $$2}'
 	@echo ""
 
 # -----------------------------------------------------------------------------
@@ -44,7 +44,7 @@ install: ## Instala dependências (uv sync)
 # Execução
 # -----------------------------------------------------------------------------
 
-dev: ## Sobe a API com hot reload em http://localhost:$(PORT)
+dev: ## Sobe a API com hot reload em http://localhost:8000 (PORT=… para trocar)
 	$(UV) run uvicorn app.main:create_app --factory --reload --host 0.0.0.0 --port $(PORT)
 
 run: ## Sobe a API sem reload
@@ -90,10 +90,12 @@ typecheck: ## Mypy com type hints obrigatórios em app/
 secrets: ## Varredura de segredos (gitleaks via pre-commit)
 	$(UV) run pre-commit run gitleaks --all-files
 
-check: lint typecheck test-cov ## Gate completo: lint + tipos + testes com cobertura + invariantes
-	@echo "$(BLUE)Invariantes do enunciado$(NC)"
+invariants: ## Invariantes do enunciado: sem branching por template, sem dependências de IA
 	@! grep -rnE 'template_id\s*(==|!=)\s*["'"'"']' app/ || (echo "branching por template encontrado" && exit 1)
 	@! grep -rniE 'openai|anthropic|langchain|langgraph|langfuse|vertex' pyproject.toml app/ || (echo "dependência de IA encontrada" && exit 1)
+	@echo "$(GREEN)✓ invariantes ok$(NC)"
+
+check: lint typecheck test-cov invariants ## Gate completo: lint + tipos + testes com cobertura + invariantes
 	@echo "$(GREEN)✓ check completo$(NC)"
 
 # -----------------------------------------------------------------------------

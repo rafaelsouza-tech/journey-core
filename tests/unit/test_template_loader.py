@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from app.config import Settings
+from app.config import APP_DIR, Settings
 from app.core.exceptions import ConfigurationError, TemplateNotFoundError
 from app.features.protocols.loader import TemplateRegistry
 
@@ -150,7 +150,7 @@ def test_service_and_engine_have_no_template_specific_branching() -> None:
 
     Exemplos de documentação (Swagger) em router/schemas podem citar `phq9`; a lógica não.
     """
-    protocols_dir = Path("app/features/protocols")
+    protocols_dir = APP_DIR / "features" / "protocols"
     logic_modules = ("service.py", "engine.py", "loader.py", "repository.py")
     for module in logic_modules:
         source = (protocols_dir / module).read_text(encoding="utf-8").lower()

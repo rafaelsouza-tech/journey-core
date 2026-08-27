@@ -16,20 +16,9 @@ class JourneyCoreError(Exception):
     status_code: int = 500
     error_code: str = "INTERNAL_ERROR"
 
-    def __init__(
-        self,
-        message: str,
-        *,
-        status_code: int | None = None,
-        error_code: str | None = None,
-        details: dict[str, Any] | None = None,
-    ) -> None:
+    def __init__(self, message: str, *, details: dict[str, Any] | None = None) -> None:
         super().__init__(message)
         self.message = message
-        if status_code is not None:
-            self.status_code = status_code
-        if error_code is not None:
-            self.error_code = error_code
         self.details = details or {}
 
 
@@ -44,11 +33,10 @@ class NotFoundError(JourneyCoreError):
     status_code = 404
     error_code = "NOT_FOUND"
 
-    def __init__(self, resource: str, resource_id: UUID | str, **kwargs: Any) -> None:
+    def __init__(self, resource: str, resource_id: UUID | str) -> None:
         super().__init__(
             f"{resource} '{resource_id}' não encontrado(a)",
             details={"resource": resource, "resource_id": str(resource_id)},
-            **kwargs,
         )
 
 

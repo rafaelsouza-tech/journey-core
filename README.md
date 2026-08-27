@@ -31,7 +31,7 @@ Núcleo determinístico de uma jornada de saúde: **consentimento**, **protocolo
 
 ```bash
 make setup     # uv sync + cria .env com PHONE_HASH_SALT gerado
-make dev       # http://localhost:8000 — Swagger em /docs
+make dev       # http://localhost:8000 — Swagger em /docs (outra porta: make dev PORT=8765)
 make test      # suíte pytest (sem rede, sem credenciais)
 make demo      # roteiro do revisor, de ponta a ponta, em ~1s
 ```
@@ -39,8 +39,8 @@ make demo      # roteiro do revisor, de ponta a ponta, em ~1s
 `make help` lista todos os alvos. Sem `make`:
 
 ```bash
-uv sync
-cp .env.example .env && sed -i.bak "s/^PHONE_HASH_SALT=.*/PHONE_HASH_SALT=$(openssl rand -hex 32)/" .env
+uv sync --frozen
+cp .env.example .env && sed -i.bak "s/^PHONE_HASH_SALT=.*/PHONE_HASH_SALT=$(openssl rand -hex 32)/" .env && rm -f .env.bak
 uv run uvicorn app.main:create_app --factory --reload
 uv run pytest
 ```
@@ -62,13 +62,15 @@ make setup          # gera o .env (o compose lê PHONE_HASH_SALT dele)
 docker compose up --build
 ```
 
+O compose publica a porta 8000 — pare o `make dev` antes, ou suba-o em outra porta com `PORT=…`.
+
 A única variável obrigatória é `PHONE_HASH_SALT` (mínimo 16 caracteres). Sem ela a aplicação **não sobe** — um salt esquecido em produção seria incidente, não aviso. As demais estão documentadas em [`.env.example`](.env.example).
 
 ---
 
 ## 2. Roteiro de 15 minutos
 
-É o critério de "pronto" do enunciado (seção 7), mais um passo 5. `make demo` executa exatamente isto e imprime cada resposta; abaixo, a versão manual com `curl` + `jq` contra `make dev`.
+É o critério de "pronto" do enunciado (seção 7), mais um passo 5. `make demo` executa exatamente isto e imprime cada resposta, sem dependências externas; abaixo, a versão manual contra `make dev` (pré-requisitos: `curl` e `jq`).
 
 ```bash
 BASE=http://localhost:8000
@@ -135,7 +137,7 @@ Rotas iguais às sugeridas no enunciado, sem prefixo de versão, para os `curl` 
 
 ```jsonc
 {
-  "session_id": "…", "template_id": "phq9", "template_version": 1,
+  "session_id": "…", "patient_id": "…", "template_id": "phq9", "template_version": 1,
   "status": "completed",
   "progress": { "answered": 2, "total": 9 },
   "next_question": null,
@@ -159,6 +161,8 @@ Rotas iguais às sugeridas no enunciado, sem prefixo de versão, para os `curl` 
   ]
 }
 ```
+
+(Cada item do `trace` traz também `params` e `details` — `{}` quando vazios. `remaining` aparece em qualquer regra numérica `gte`/`gt` que falhe; no cooldown lê-se "faltam N horas".)
 
 ---
 
@@ -206,11 +210,11 @@ Cada feature segue o mesmo padrão: `models.py` (entidades e schema dos artefato
 
 - **Template é a única fonte.** O interpretador (`protocols/engine.py`) só conhece um mini-vocabulário — operandos `sum_of` / `answer` / literal e operadores `lt lte gt gte eq ne` — e a ação `end_block`. Não há `if template_id == …` em lugar nenhum; um teste varre os módulos de lógica e falha se aparecer. Um segundo template com regras diferentes roda sem tocar no serviço (há um teste com um template fictício de 3 perguntas).
 - **Pseudonimização por desenho.** O telefone só existe em claro no cadastro operacional. Em eventos, logs e respostas circula `phone_hash = HMAC-SHA256(salt, dígitos)` — HMAC é o "SHA-256 com salt" na construção correta, sem concatenação ingênua; a normalização aceita só dígitos ASCII e separadores (`+ - ( ) . espaço`) e faz `+55 (11) 90000-0000` e `5511900000000` colidirem no mesmo hash. Nenhum schema de resposta tem o campo `phone`.
-- **PII bloqueada na fronteira, não por convenção.** `EventStore.append()` recusa `properties` com chaves proibidas (`phone`, `name`, `birth_date`, …) ou valores com cara de telefone — strings com 10–15 dígitos e separadores *e* inteiros nessa faixa (um telefone convertido para número escaparia da detecção textual); datas ISO e UUIDs não disparam. É erro 500 `PII_GUARD_VIOLATION` — bug de programação, não erro do cliente. O mesmo detector alimenta um processor do structlog, e um teste captura os logs de um fluxo completo e afirma que o telefone não aparece nem se alguém logar `phone=` por descuido.
-- **Respostas de erro não ecoam a entrada.** O handler de validação devolve só `campo: [mensagens]` — nunca o `input` que o Pydantic inclui por padrão, e os fragmentos que ele cita entre crases ("found `+` at 1") viram `…`. Ids de template/pergunta fora do formato `[a-z][a-z0-9_]*` são 422 antes de chegar ao serviço, para que nenhum 404/409 repita o que o cliente enviou. Testado com telefone no corpo, no path e na query: nenhum erro contém o valor.
-- **Event store imutável pelo contrato.** A porta `EventStore` expõe `append` e leituras; não existe `update`/`delete` na interface, `Event` é `frozen` e `properties` é `MappingProxyType`. Um teste verifica os três.
-- **Minimização.** `protocol_completed` carrega score, máximo, `ended_by_skip`, contagens — não as respostas individuais. `patient_created` carrega só `consent_status`.
-- **Relógio injetado.** Todo "agora" vem de `Clock`; nos testes, `FixedClock.advance(hours=72)` prova o cooldown na borda exata (71h59m59s recusa, 72h00m00s libera), sem congelar o processo. O tempo decorrido é truncado a centésimos de hora com aritmética inteira — arredondar liberaria o cooldown até 18 s antes da hora.
+- **PII bloqueada na fronteira, não por convenção.** `EventStore.append()` recusa `patient_id_hash` e `properties` com chaves proibidas (`phone`, `name`, `birth_date`, `dob`, radicais como `nasc`/`cpf`/`email`, …) ou valores com cara de telefone — strings com 10–15 dígitos e separadores *e* inteiros nessa faixa (um telefone convertido para número escaparia da detecção textual). É erro 500 `PII_GUARD_VIOLATION` — bug de programação, não erro do cliente. O mesmo detector alimenta um processor do structlog, e um teste captura os logs de um fluxo completo e afirma que o telefone não aparece nem se alguém logar `phone=` por descuido. *Limite conhecido e deliberado:* o detector de telefone exige delimitação (não casa dígitos colados a letras, como `p5511…`), porque hashes hexadecimais e UUIDs contêm sequências longas de dígitos e seriam falsos positivos; ele é rede de segurança contra números crus — o controle primário são os schemas sem campo `phone` e as chaves proibidas.
+- **Respostas de erro não ecoam a entrada.** O handler de validação devolve só `campo: [mensagens]` — nunca o `input` que o Pydantic inclui por padrão, e os fragmentos que ele cita entre crases ("found `+` at 1") viram `…`. Ids de template/pergunta só chegam ao serviço se tiverem o formato `[a-z][a-z0-9_]*` e até 64 caracteres (o resto é 422): o que um 404/409 pode repetir é um identificador curto e sem PII possível. Testado com telefone no corpo, no path e na query: nenhum erro contém o valor. Logs registram a **rota** (`/patients/{patient_id}`), nunca o path bruto.
+- **Event store imutável pelo contrato.** A porta `EventStore` expõe `append` e leituras; não existe `update`/`delete` na interface, `Event` é `frozen` e `properties` é congelado em profundidade (`MappingProxyType`/`tuple` recursivos). Testes verificam os três — inclusive listas aninhadas.
+- **Minimização.** `protocol_completed` carrega score, máximo, `ended_by_skip`, contagens — não as respostas individuais. `patient_created` carrega só `consent_status`. Logs não carregam resultado clínico (o score fica só no evento).
+- **Relógio injetado.** Todo "agora" de domínio vem de `Clock` (a única exceção é a validação de `birth_date` no schema, que não tem DI); nos testes, `FixedClock.advance(hours=72)` prova o cooldown na borda exata (71h59m59s recusa, 72h00m00s libera), sem congelar o processo. O tempo decorrido é truncado a centésimos de hora com aritmética inteira — arredondar liberaria o cooldown até 18 s antes da hora.
 - **Regras declaram prioridade e explicam a recusa.** O YAML é avaliado inteiro (sem short-circuit) e a ordem define qual `reason` é reportado. O cooldown (72h) mora só no YAML — não é env var — para ter fonte única.
 - **Versão pinada.** A sessão guarda `template_version`; o evento de follow-up guarda `rules_version`. Trocar o JSON/YAML não altera o significado de uma sessão em curso nem de uma decisão passada.
 - **Robustez à entrega duplicada.** `POST …/answers` exige o `question_id` esperado (409 `UNEXPECTED_QUESTION` se vier fora de ordem ou repetido); concluir uma tarefa já concluída é 409 sem evento duplicado; só uma sessão em andamento por paciente/template.
@@ -236,7 +240,9 @@ pending ──accept──▶ accepted ──pause──▶ paused
 ```
 
 - `pause` / `resume` implementam a **restrição de tratamento**: nada avança (protocolo, tarefa, follow-up) enquanto pausado, e os dados ficam onde estão.
-- `revoke` implementa a **exclusão**: apaga telefone, nome e nascimento do cadastro e emite `consent_revoked` com `erased_fields`. **A trilha de eventos não é tocada** — ela só carrega `phone_hash`, que sem o salt e sem o cadastro é irreversível. O que sobra é uma trilha pseudonimizada, útil para auditoria e analytics, sem o titular.
+- `revoke` implementa a **exclusão**: apaga telefone, nome e nascimento do cadastro, **libera o telefone** e emite `consent_revoked` com `erased_fields`. **A trilha de eventos não é tocada** — ela só carrega `phone_hash`, que para terceiros (sem o salt) é irreversível. O que sobra é uma trilha pseudonimizada, útil para auditoria e analytics, ainda endereçável pelo id do cadastro revogado.
+- Quem revogou pode voltar: um novo cadastro com o mesmo telefone é um **novo titular** para a API — novo `patient_id`, consentimento novo e trilha própria a partir do seu `patient_created` (o cooldown de follow-up também é por cadastro). O hash é o mesmo, porque é determinístico; o recorte é feito pelo evento inicial de cada cadastro, não por timestamp.
+- *Limite honesto:* para o próprio controlador, que tem o salt, o hash de um telefone é recalculável — isto é pseudonimização, não anonimização. Exclusão criptográfica de verdade é o item 2 do 4º dia (crypto-shredding).
 - Toda transição está numa **tabela** (`CONSENT_TRANSITIONS`); o que não está nela é 409 `INVALID_CONSENT_TRANSITION {from, action}`. Um teste garante que `revoked` é terminal e que nenhum par indefinido é aceito silenciosamente.
 - O motor de elegibilidade ganha os reasons `consent_paused` e `consent_revoked` — declarados no YAML via `reason_by_value`, sem código novo.
 
@@ -248,7 +254,7 @@ O roteiro da seção 2 (passo 5) e `tests/integration/test_consent_lifecycle.py`
 
 ## 7. Eventos
 
-Envelope: `event_id · occurred_at · event_name · patient_id_hash · properties · schema_version · correlation_id`. O `correlation_id` é o `request_id` do request que originou o evento — liga evento ↔ linha de log. Um `X-Request-ID` enviado pelo cliente só é propagado (header, envelope de erro, `correlation_id`) se casar `[A-Za-z0-9._-]{1,128}` e não tiver cara de telefone; caso contrário a API gera um uuid4 — a trilha imutável não aceita conteúdo arbitrário do cliente. O próprio `patient_id_hash` passa pela guarda: um telefone no lugar do hash é recusado. A consulta usa o id interno (`GET /events?patient_id=<uuid>`); o que está persistido é o hash.
+Envelope: `event_id · occurred_at · event_name · patient_id_hash · properties · schema_version · correlation_id`. O `correlation_id` é o `request_id` do request que originou o evento — liga evento ↔ linha de log. O `request_id` é **sempre gerado no servidor** (uuid4, devolvido no header `X-Request-ID`): um valor vindo do cliente iria parar em logs e numa trilha imutável, então não é propagado. O próprio `patient_id_hash` passa pela guarda: um telefone no lugar do hash é recusado. `GET /events?patient_id=` devolve a trilha **daquele cadastro** (do seu `patient_created` em diante). A consulta usa o id interno (`GET /events?patient_id=<uuid>`); o que está persistido é o hash.
 
 | `event_name` | Quando | `properties` |
 |---|---|---|
@@ -290,7 +296,7 @@ Envelope único: `{ "success": false, "error": { "code", "message", "details" },
 
 ```bash
 make test          # tudo (unit + integration + e2e), ~12s, sem rede
-make test-cov      # com cobertura; o gate exige ≥ 90% (está em ~98%)
+make test-cov      # com cobertura; o gate exige ≥ 90% (está em ~99%)
 make check         # lint + mypy + cobertura + invariantes do enunciado
 ```
 
@@ -340,6 +346,8 @@ Deliberadamente, por estar fora de escopo ou por não caber em três dias com qu
 - **Idempotência por chave explícita** (`Idempotency-Key`). Hoje a proteção contra entrega duplicada é semântica (`question_id` esperado, 409 em tarefa já concluída).
 - **Paginação em `GET /events`.** A trilha de um paciente é pequena no escopo do teste.
 - **Disparo automático de follow-up** ao concluir tarefa (permitido pelo enunciado; ver decisões de desenho).
+- **Autenticação e rate limit do integrador.** Sem eles, o 409 de telefone duplicado funciona como oráculo de pertencimento ("este número está cadastrado?"). O enunciado exclui auth de usuário final; o controle previsto é na fronteira (o integrador/WhatsApp), não neste núcleo.
+- **Canonização de DDI.** A chave de unicidade são os dígitos como enviados: `+55 11 9…` e `11 9…` são telefones distintos para a API. Exigir E.164 com `+` é decisão de produto.
 
 ---
 

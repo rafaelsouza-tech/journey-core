@@ -19,7 +19,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.config import Settings
+from app.config import APP_DIR, Settings
 from app.container import Container
 from app.core.clock import FixedClock
 from app.core.exceptions import ConfigurationError
@@ -154,7 +154,7 @@ def test_the_only_writing_route_of_journeys_is_task_completion(client: TestClien
 
 def test_journey_logic_has_no_template_specific_branching() -> None:
     """O plano é a única fonte do objetivo e das tarefas: nada de `if template_id == ...`."""
-    journeys_dir = Path("app/features/journeys")
+    journeys_dir = APP_DIR / "features" / "journeys"
 
     for module in ("service.py", "loader.py", "repository.py", "models.py"):
         source = (journeys_dir / module).read_text(encoding="utf-8")

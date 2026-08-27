@@ -9,6 +9,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class PlanTask(BaseModel):
+    """Tarefa declarada no plano."""
+
     # `str_strip_whitespace`: um título só de espaços não passa pelo `min_length`.
     model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
 
@@ -42,12 +44,16 @@ class JourneyStatus(StrEnum):
 
 
 class TaskStatus(StrEnum):
+    """Valores literais do enunciado."""
+
     EM_ANDAMENTO = "em_andamento"
     CONCLUIDA = "concluida"
 
 
 @dataclass
 class Task:
+    """Tarefa instanciada para um paciente."""
+
     id: UUID
     key: str
     title: str
@@ -61,6 +67,8 @@ class Task:
 
 @dataclass
 class Journey:
+    """Plano de ação de um paciente, criado a partir de um protocolo concluído."""
+
     id: UUID
     patient_id: UUID
     source_session_id: UUID
@@ -75,10 +83,6 @@ class Journey:
     @property
     def active_tasks(self) -> list[Task]:
         return [task for task in self.tasks if task.is_active]
-
-    @property
-    def is_active(self) -> bool:
-        return self.status is JourneyStatus.EM_ANDAMENTO
 
     def find_task(self, task_id: UUID) -> Task | None:
         return next((task for task in self.tasks if task.id == task_id), None)

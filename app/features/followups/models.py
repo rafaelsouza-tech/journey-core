@@ -78,7 +78,7 @@ class Expectation(BaseModel):
 
 
 class Rule(BaseModel):
-    """Uma regra declarativa."""
+    """Uma regra declarativa: check + expectativa + reason tipado (com variantes por valor)."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 

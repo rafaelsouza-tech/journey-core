@@ -72,10 +72,18 @@ class PatientService:
             consent_updated_at=now,
             created_at=now,
         )
+        created = self._events.append(
+            EventName.PATIENT_CREATED, phone_hash, {"consent_status": status}
+        )
+        patient.trail_start_event_id = created.event_id
         self._patients.add(patient)
-        self._events.append(EventName.PATIENT_CREATED, phone_hash, {"consent_status": status})
         if data.terms_accepted:
-            self._events.append(EventName.TERMS_ACCEPTED, phone_hash, {"source": "registration"})
+            self._events.append(
+                EventName.TERMS_ACCEPTED,
+                phone_hash,
+                {"source": "registration"},
+                trail_id=patient.trail_start_event_id,
+            )
 
         logger.info("patient_created", patient_id=str(patient.id), consent_status=str(status))
         return patient
@@ -96,8 +104,9 @@ class PatientService:
         """
         Aplica uma ação de consentimento conforme a tabela de transições.
 
-        `revoke` apaga telefone, nome e nascimento do cadastro. A trilha de eventos
-        permanece intacta: ela só carrega o hash, irreversível sem salt + cadastro.
+        `revoke` apaga telefone, nome e nascimento do cadastro e libera o telefone para um
+        novo cadastro (que terá id e trilha próprios). A trilha deste cadastro permanece
+        intacta e endereçável pelo seu id: ela só carrega o hash.
 
         Raises:
             PatientNotFoundError, InvalidConsentTransitionError
@@ -115,22 +124,33 @@ class PatientService:
         if action is ConsentAction.ACCEPT:
             patient.terms_accepted_at = now
             self._events.append(
-                EventName.TERMS_ACCEPTED, patient.phone_hash, {"source": "consent_endpoint"}
+                EventName.TERMS_ACCEPTED,
+                patient.phone_hash,
+                {"source": "consent_endpoint"},
+                trail_id=patient.trail_start_event_id,
             )
         elif action is ConsentAction.PAUSE:
             self._events.append(
-                EventName.CONSENT_PAUSED, patient.phone_hash, {"previous_status": previous}
+                EventName.CONSENT_PAUSED,
+                patient.phone_hash,
+                {"previous_status": previous},
+                trail_id=patient.trail_start_event_id,
             )
         elif action is ConsentAction.RESUME:
             self._events.append(
-                EventName.CONSENT_RESUMED, patient.phone_hash, {"previous_status": previous}
+                EventName.CONSENT_RESUMED,
+                patient.phone_hash,
+                {"previous_status": previous},
+                trail_id=patient.trail_start_event_id,
             )
         elif action is ConsentAction.REVOKE:
             erased = patient.erase_pii()
+            self._patients.release_phone_hash(patient.phone_hash)
             self._events.append(
                 EventName.CONSENT_REVOKED,
                 patient.phone_hash,
                 {"previous_status": previous, "erased_fields": erased},
+                trail_id=patient.trail_start_event_id,
             )
 
         self._patients.save(patient)

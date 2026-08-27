@@ -4,10 +4,11 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from app.features.events.models import EventName
 from app.shared.schemas import BaseSchema
+from app.shared.serialization import json_safe
 
 
 class EventResponse(BaseSchema):
@@ -20,6 +21,12 @@ class EventResponse(BaseSchema):
     properties: dict[str, Any] = Field(default_factory=dict)
     schema_version: int
     correlation_id: str | None = Field(default=None, description="request_id que originou o evento")
+
+    @field_validator("properties", mode="before")
+    @classmethod
+    def _thaw(cls, value: Any) -> Any:
+        # As properties persistidas são congeladas (MappingProxyType/tuple); a resposta é JSON.
+        return json_safe(value)
 
 
 class EventListResponse(BaseSchema):

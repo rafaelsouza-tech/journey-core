@@ -53,7 +53,6 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
-"tests/**/*.py" = ["S101"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["app", "tests"]
@@ -97,7 +96,6 @@ filterwarnings = ["error::DeprecationWarning:app.*"]
 [tool.coverage.run]
 source = ["app"]
 branch = true
-omit = ["app/__main__.py"]
 
 [tool.coverage.report]
 precision = 1

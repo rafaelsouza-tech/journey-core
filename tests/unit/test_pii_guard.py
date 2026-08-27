@@ -56,3 +56,24 @@ def test_redact_replaces_forbidden_keys_and_phone_values() -> None:
         "msg": "[redacted]",
         "score": 2,
     }
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "patient_name",
+        "first_name",
+        "dob",
+        "birthday",
+        "data_nascimento",
+        "PATIENT_PHONE",
+        "email_titular",
+    ],
+)
+def test_forbidden_key_variants_are_caught(key: str) -> None:
+    assert find_pii({key: "x"}) == [f"$.{key} (forbidden_key)"]
+
+
+@pytest.mark.parametrize("key", ["event_name", "template_name", "rule_id", "task_key", "score"])
+def test_legitimate_keys_are_not_flagged(key: str) -> None:
+    assert find_pii({key: "x"}) == []

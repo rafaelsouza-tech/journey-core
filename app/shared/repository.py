@@ -5,7 +5,7 @@ Um `dict` por agregado, chaveado pelo `id`. A interface (add/get/save/all) é a
 mesma que um repositório Firestore exporia — trocar a persistência não toca os services.
 """
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 from typing import Protocol
 from uuid import UUID
 
@@ -46,11 +46,3 @@ class InMemoryRepository[T: HasId]:
     def filter(self, predicate: Callable[[T], bool]) -> list[T]:
         """Entidades que satisfazem o predicado, na ordem de inserção."""
         return [item for item in self._items.values() if predicate(item)]
-
-    def extend(self, entities: Iterable[T]) -> None:
-        """Insere várias entidades."""
-        for entity in entities:
-            self.add(entity)
-
-    def __len__(self) -> int:
-        return len(self._items)

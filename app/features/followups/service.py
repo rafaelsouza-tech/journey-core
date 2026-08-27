@@ -52,12 +52,18 @@ class FollowupService:
             "trace": trace_as_json(decision),
         }
         if decision.eligible:
-            event = self._events.append(EventName.FOLLOWUP_ELIGIBLE, patient.phone_hash, properties)
+            event = self._events.append(
+                EventName.FOLLOWUP_ELIGIBLE,
+                patient.phone_hash,
+                properties,
+                trail_id=patient.trail_start_event_id,
+            )
         else:
             event = self._events.append(
                 EventName.FOLLOWUP_SKIPPED,
                 patient.phone_hash,
                 {"reason": decision.reason, **properties},
+                trail_id=patient.trail_start_event_id,
             )
 
         logger.info(

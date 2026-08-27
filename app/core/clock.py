@@ -41,10 +41,6 @@ class FixedClock:
         self._now += timedelta(hours=hours, minutes=minutes, seconds=seconds)
         return self._now
 
-    def set(self, moment: datetime) -> None:
-        """Fixa o relógio em um instante específico."""
-        self._now = _ensure_utc(moment)
-
 
 def _ensure_utc(moment: datetime) -> datetime:
     if moment.tzinfo is None:

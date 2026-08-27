@@ -11,8 +11,7 @@ import hashlib
 import hmac
 import re
 
-PHONE_MIN_DIGITS = 10
-PHONE_MAX_DIGITS = 15  # limite do padrão E.164
+from app.core.pii import PHONE_MAX_DIGITS, PHONE_MIN_DIGITS
 
 # Só dígitos ASCII e os separadores usuais (`+` apenas à frente). Letras ou dígitos de
 # outros alfabetos não são "formatação": são entrada inválida, não algo a descartar.

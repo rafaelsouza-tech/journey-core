@@ -20,6 +20,10 @@ class PatientRepository(InMemoryRepository[Patient]):
         return entity
 
     def get_by_phone_hash(self, phone_hash: str) -> Patient | None:
-        """Paciente com o hash informado, se existir."""
+        """Cadastro ativo (não revogado) com o hash informado, se existir."""
         patient_id = self._by_hash.get(phone_hash)
         return self.get(patient_id) if patient_id is not None else None
+
+    def release_phone_hash(self, phone_hash: str) -> None:
+        """Libera o telefone para um novo cadastro (revogação)."""
+        self._by_hash.pop(phone_hash, None)

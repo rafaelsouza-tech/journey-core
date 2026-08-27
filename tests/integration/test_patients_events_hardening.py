@@ -249,7 +249,7 @@ def test_unhandled_exception_returns_envelope_with_request_id_and_correlated_log
         raise RuntimeError("falha simulada")
 
     with TestClient(app, raise_server_exceptions=False) as client:
-        response = client.get("/boom", headers={"X-Request-ID": "req-boom-1"})
+        response = client.get("/boom")
 
     assert response.status_code == 500
     assert response.json()["error"] == {
@@ -257,36 +257,37 @@ def test_unhandled_exception_returns_envelope_with_request_id_and_correlated_log
         "message": "Erro interno",
         "details": None,
     }
-    assert response.json()["request_id"] == "req-boom-1"
-    assert response.headers["X-Request-ID"] == "req-boom-1"
+    request_id = response.headers["X-Request-ID"]
+    assert response.json()["request_id"] == request_id
+    assert len(request_id) == 36  # uuid4 gerado no servidor
     assert "falha simulada" not in response.text
 
     events = [r.msg for r in caplog.records if isinstance(r.msg, dict)]
     failure = next(e for e in events if e["event"] == "unhandled_exception")
-    assert failure["request_id"] == "req-boom-1"  # liga a linha de log ao request
+    assert failure["request_id"] == request_id  # liga a linha de log ao request
     assert failure["error_type"] == "RuntimeError"
     access = next(e for e in events if e["event"] == "request_failed")
-    assert access["request_id"] == "req-boom-1"
+    assert access["request_id"] == request_id
 
 
 # -----------------------------------------------------------------------------
-# Middleware: request_id propagado só quando seguro
+# Middleware: request_id sempre gerado no servidor
 # -----------------------------------------------------------------------------
 
 
-def test_safe_request_id_is_propagated_to_response_envelope_and_events(
-    client: TestClient,
-) -> None:
+def test_client_request_id_is_never_propagated(client: TestClient) -> None:
+    """Um valor do cliente iria parar em logs e na trilha imutável: o servidor gera o seu."""
     created = client.post(
         "/patients", json=patient_payload(), headers={"X-Request-ID": "req-Abc_123.z"}
     )
-    assert created.headers["X-Request-ID"] == "req-Abc_123.z"
+    server_id = created.headers["X-Request-ID"]
+    assert server_id != "req-Abc_123.z" and len(server_id) == 36
 
     trail = client.get("/events", params={"patient_id": created.json()["id"]}).json()["data"]
-    assert {e["correlation_id"] for e in trail} == {"req-Abc_123.z"}
+    assert {e["correlation_id"] for e in trail} == {server_id}
 
     error = client.get(f"/patients/{UNKNOWN_ID}", headers={"X-Request-ID": "req-Abc_123.z"})
-    assert error.json()["request_id"] == "req-Abc_123.z"
+    assert error.json()["request_id"] == error.headers["X-Request-ID"] != "req-Abc_123.z"
 
 
 @pytest.mark.parametrize(
@@ -294,12 +295,14 @@ def test_safe_request_id_is_propagated_to_response_envelope_and_events(
     [
         pytest.param(FAKE_PHONE_DIGITS, id="phone_digits"),  # iria parar na trilha
         pytest.param(FAKE_PHONE, id="phone_formatted"),
+        pytest.param("p" + FAKE_PHONE_DIGITS, id="phone_with_prefix"),
+        pytest.param(FAKE_NAME, id="name"),
+        pytest.param(FAKE_BIRTH_DATE, id="birth_date"),
         pytest.param("x" * 5000, id="too_long"),  # seria ecoado no header e no envelope
-        pytest.param("com espaco", id="whitespace"),
         pytest.param("<script>", id="markup"),
     ],
 )
-def test_unsafe_request_id_header_is_replaced_by_a_generated_one(
+def test_injected_request_id_never_reaches_trail_or_response(
     client: TestClient, unsafe: str
 ) -> None:
     created = client.post("/patients", json=patient_payload(), headers={"X-Request-ID": unsafe})

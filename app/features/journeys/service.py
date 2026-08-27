@@ -12,7 +12,6 @@ from app.features.journeys.models import Journey, JourneyStatus, Task, TaskStatu
 from app.features.journeys.repository import JourneyRepository
 from app.features.patients.models import Patient
 from app.features.patients.service import PatientService, require_active_consent
-from app.features.protocols.models import ProtocolSession
 
 logger = get_logger(__name__)
 
@@ -34,14 +33,16 @@ class JourneyService:
         self._events = events
         self._clock = clock
 
-    def create_for_completed_protocol(self, patient: Patient, session: ProtocolSession) -> Journey:
+    def create_for_completed_protocol(
+        self, patient: Patient, *, session_id: UUID, template_id: str
+    ) -> Journey:
         """Instancia o plano do template como jornada do paciente e emite `journey_created`."""
-        plan = self._plans.get(session.template_id)
+        plan = self._plans.get(template_id)
         journey = Journey(
             id=uuid4(),
             patient_id=patient.id,
-            source_session_id=session.id,
-            template_id=session.template_id,
+            source_session_id=session_id,
+            template_id=template_id,
             plan_version=plan.version,
             objective=plan.objective,
             created_at=self._clock.now(),
@@ -53,11 +54,12 @@ class JourneyService:
             patient.phone_hash,
             {
                 "journey_id": journey.id,
-                "source_session_id": session.id,
-                "template_id": session.template_id,
+                "source_session_id": session_id,
+                "template_id": template_id,
                 "plan_version": plan.version,
                 "task_count": len(journey.tasks),
             },
+            trail_id=patient.trail_start_event_id,
         )
         logger.info("journey_created", journey_id=str(journey.id), task_count=len(journey.tasks))
         return journey
@@ -110,13 +112,17 @@ class JourneyService:
                 "task_key": task.key,
                 "remaining_tasks": remaining,
             },
+            trail_id=patient.trail_start_event_id,
         )
 
         if remaining == 0:
             journey.status = JourneyStatus.CONCLUIDA
             journey.completed_at = now
             self._events.append(
-                EventName.JOURNEY_COMPLETED, patient.phone_hash, {"journey_id": journey.id}
+                EventName.JOURNEY_COMPLETED,
+                patient.phone_hash,
+                {"journey_id": journey.id},
+                trail_id=patient.trail_start_event_id,
             )
 
         self._journeys.save(journey)

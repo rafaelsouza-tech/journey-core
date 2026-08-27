@@ -24,15 +24,21 @@ IDENTIFIER_PATTERN = r"^[a-z][a-z0-9_]*$"
 
 
 class _Strict(BaseModel):
+    """Base dos modelos do template: nada além do schema, nada mutável."""
+
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
 class ScaleOption(_Strict):
+    """Um ponto da escala de resposta (valor numérico + rótulo)."""
+
     value: int
     label: str = Field(min_length=1)
 
 
 class Scale(_Strict):
+    """Escala de resposta comum a todas as perguntas."""
+
     options: list[ScaleOption] = Field(min_length=2)
 
     @property
@@ -51,16 +57,22 @@ class Scale(_Strict):
 
 
 class Scoring(_Strict):
+    """Método de pontuação — só a soma; sem índices compostos."""
+
     method: Literal["sum"] = "sum"
 
 
 class Question(_Strict):
+    """Uma pergunta do protocolo, servida na ordem de `order`."""
+
     id: str = Field(pattern=IDENTIFIER_PATTERN)
     order: int = Field(ge=1)
     text: str = Field(min_length=1)
 
 
 class SumOf(_Strict):
+    """Operando: soma das respostas das perguntas listadas."""
+
     sum_of: list[str] = Field(min_length=1)
 
     @model_validator(mode="after")
@@ -73,6 +85,8 @@ class SumOf(_Strict):
 
 
 class AnswerRef(_Strict):
+    """Operando: a resposta de uma pergunta."""
+
     answer: str
 
 
@@ -81,6 +95,8 @@ ConditionOperator = Literal["lt", "lte", "gt", "gte", "eq", "ne"]
 
 
 class Condition(_Strict):
+    """Comparação `left <op> right` entre operandos."""
+
     op: ConditionOperator
     left: Operand
     right: Operand
@@ -96,10 +112,14 @@ class Condition(_Strict):
 
 
 class SkipAction(StrEnum):
+    """Ação de uma skip rule; `end_block` conclui o protocolo com pontuação parcial."""
+
     END_BLOCK = "end_block"
 
 
 class SkipRule(_Strict):
+    """Regra avaliada logo após `after_question` ser respondida."""
+
     id: str = Field(pattern=IDENTIFIER_PATTERN)
     description: str | None = None
     after_question: str
@@ -154,9 +174,6 @@ class ProtocolTemplate(_Strict):
     def max_score(self) -> int:
         return self.scale.max_value * len(self.questions)
 
-    def get_question(self, question_id: str) -> Question | None:
-        return next((q for q in self.questions if q.id == question_id), None)
-
 
 # -----------------------------------------------------------------------------
 # Sessão (estado)
@@ -164,6 +181,8 @@ class ProtocolTemplate(_Strict):
 
 
 class SessionStatus(StrEnum):
+    """Estado da sessão."""
+
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
 

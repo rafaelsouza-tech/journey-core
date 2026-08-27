@@ -81,3 +81,14 @@ def test_store_refuses_pii_in_properties(container: Container) -> None:
     with pytest.raises(PIIGuardViolationError):
         container.events.append(EventName.PATIENT_CREATED, "hash", {"note": "5511900000001"})
     assert len(container.events) == 0
+
+
+def test_event_properties_are_frozen_in_depth(container: Container) -> None:
+    event = container.events.append(
+        EventName.CONSENT_REVOKED, "hash", {"erased_fields": ["phone"], "nested": {"a": [1]}}
+    )
+    with pytest.raises(AttributeError):
+        event.properties["erased_fields"].append("x")  # type: ignore[attr-defined]
+    with pytest.raises(TypeError):
+        event.properties["nested"]["a"] = []  # type: ignore[index]
+    assert event.properties["erased_fields"] == ("phone",)

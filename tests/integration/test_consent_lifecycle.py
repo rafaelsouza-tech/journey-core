@@ -5,7 +5,14 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.conftest import FAKE_BIRTH_DATE, FAKE_NAME, answer, assert_no_pii, start_protocol
+from tests.conftest import (
+    FAKE_BIRTH_DATE,
+    FAKE_NAME,
+    answer,
+    assert_no_pii,
+    patient_payload,
+    start_protocol,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -148,3 +155,38 @@ def test_unknown_action_returns_422(client: TestClient, create_patient: Any) -> 
 
 def test_consent_action_on_unknown_patient_returns_404(client: TestClient) -> None:
     assert consent(client, "00000000-0000-0000-0000-000000000000", "revoke").status_code == 404
+
+
+def test_revoke_releases_the_phone_and_a_new_registration_has_its_own_trail(
+    client: TestClient, completed_patient: dict[str, Any]
+) -> None:
+    """Quem revogou pode voltar: novo cadastro, novo id, trilha própria — a antiga fica com o id antigo."""
+    old = completed_patient["patient"]
+    consent(client, old["id"], "revoke")
+    old_trail = client.get("/events", params={"patient_id": old["id"]}).json()["data"]
+
+    again = client.post("/patients", json=patient_payload())
+    assert again.status_code == 201
+    new = again.json()
+    assert new["id"] != old["id"]
+    assert new["phone_hash"] == old["phone_hash"]  # mesmo telefone, mesmo hash determinístico
+
+    new_trail = client.get("/events", params={"patient_id": new["id"]}).json()["data"]
+    assert [e["event_name"] for e in new_trail] == ["patient_created", "terms_accepted"]
+    assert client.get("/events", params={"patient_id": old["id"]}).json()["data"] == old_trail
+    assert names(client, old["id"])[-1] == "consent_revoked"
+
+    # O cooldown também é por cadastro: a história antiga não bloqueia o novo titular.
+    decision = client.post("/followups/evaluate", json={"patient_id": new["id"]}).json()
+    assert decision["reason"] == "protocol_not_completed"
+    assert decision["trace"][-1]["passed"] is True
+
+
+def test_revoked_patient_still_readable_but_cannot_be_found_by_phone_again(
+    client: TestClient, create_patient: Any
+) -> None:
+    patient = create_patient()
+    consent(client, patient["id"], "revoke")
+
+    assert client.get(f"/patients/{patient['id']}").json()["consent_status"] == "revoked"
+    assert client.post("/patients", json=patient_payload()).status_code == 201

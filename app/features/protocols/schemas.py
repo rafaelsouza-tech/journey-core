@@ -18,12 +18,13 @@ from app.shared.schemas import BaseSchema
 
 
 class StartProtocolRequest(BaseSchema):
-    template_id: str = Field(pattern=IDENTIFIER_PATTERN, examples=["phq9"])
+    template_id: str = Field(pattern=IDENTIFIER_PATTERN, max_length=64, examples=["phq9"])
 
 
 class AnswerRequest(BaseSchema):
     question_id: str = Field(
         pattern=IDENTIFIER_PATTERN,
+        max_length=64,
         description="Id da pergunta que está sendo respondida (a próxima esperada)",
         examples=["q1"],
     )
@@ -55,6 +56,13 @@ class ProtocolResultResponse(BaseSchema):
     ended_by_skip: bool
     skip_rule_id: str | None
     answered_questions: list[str]
+
+
+def _completed_score(session: ProtocolSession) -> int:
+    # Invariante do serviço: sessão concluída sempre tem score. Falhar alto é melhor que "0".
+    if session.score is None:
+        raise ValueError(f"sessão {session.id} concluída sem score")
+    return session.score
 
 
 class ProtocolStepResponse(BaseSchema):
@@ -98,7 +106,7 @@ class ProtocolStepResponse(BaseSchema):
             ),
             result=(
                 ProtocolResultResponse(
-                    score=session.score if session.score is not None else 0,
+                    score=_completed_score(session),
                     max_score=template.max_score,
                     ended_by_skip=session.ended_by_skip,
                     skip_rule_id=session.skip_rule_id,

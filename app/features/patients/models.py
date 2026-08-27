@@ -60,6 +60,9 @@ class Patient:
     terms_accepted_at: datetime | None
     consent_updated_at: datetime
     created_at: datetime
+    # Evento `patient_created` deste cadastro: a trilha do paciente começa aqui. Um mesmo
+    # telefone pode ter tido outro cadastro (revogado) — este não enxerga a história daquele.
+    trail_start_event_id: UUID | None = None
 
     @property
     def has_active_consent(self) -> bool:

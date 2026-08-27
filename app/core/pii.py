@@ -10,6 +10,7 @@ import re
 from collections.abc import Mapping
 from typing import Any
 
+# Chaves que, por nome exato, carregam PII.
 FORBIDDEN_KEYS: frozenset[str] = frozenset(
     {
         "phone",
@@ -18,13 +19,28 @@ FORBIDDEN_KEYS: frozenset[str] = frozenset(
         "name",
         "nome",
         "full_name",
+        "first_name",
+        "last_name",
+        "patient_name",
         "birth_date",
         "birthdate",
         "date_of_birth",
         "data_nascimento",
+        "dob",
         "cpf",
         "email",
     }
+)
+# Radicais que tornam qualquer chave suspeita (ex.: `patient_phone`, `nascimento_titular`).
+# `name` fica fora de propósito: `event_name`/`template_name` são legítimos.
+FORBIDDEN_KEY_STEMS: tuple[str, ...] = (
+    "phone",
+    "telefone",
+    "nome_",
+    "birth",
+    "nasc",
+    "cpf",
+    "email",
 )
 
 # Sequência de 10–15 dígitos, com separadores usuais de telefone, delimitada por
@@ -34,13 +50,13 @@ _ISO_DATE_PREFIX = re.compile(r"^\d{4}-\d{2}-\d{2}")
 _NON_DIGITS = re.compile(r"\D")
 
 PHONE_MIN_DIGITS = 10
-PHONE_MAX_DIGITS = 15
+PHONE_MAX_DIGITS = 15  # limite do padrão E.164
 
 
 def is_forbidden_key(key: str) -> bool:
-    """Chave de dicionário que, por nome, carrega PII (ex.: `phone`, `patient_phone`)."""
+    """Chave de dicionário que, por nome, carrega PII (ex.: `phone`, `patient_phone`, `dob`)."""
     lowered = key.lower()
-    return lowered in FORBIDDEN_KEYS or "phone" in lowered
+    return lowered in FORBIDDEN_KEYS or any(stem in lowered for stem in FORBIDDEN_KEY_STEMS)
 
 
 def looks_like_phone(text: str) -> bool:

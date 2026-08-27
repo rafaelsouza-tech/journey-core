@@ -15,8 +15,9 @@ from app.core.logging import get_logger
 from app.features.events.models import EventName
 from app.features.events.store import EventStore
 from app.features.journeys.service import JourneyService
+from app.features.patients.models import Patient
 from app.features.patients.service import PatientService, require_active_consent
-from app.features.protocols.engine import apply_answer, next_question
+from app.features.protocols.engine import StepOutcome, apply_answer, next_question
 from app.features.protocols.loader import TemplateRegistry
 from app.features.protocols.models import ProtocolSession, ProtocolTemplate, SessionStatus
 from app.features.protocols.repository import ProtocolSessionRepository
@@ -76,6 +77,7 @@ class ProtocolService:
                 "template_id": template.template_id,
                 "template_version": template.version,
             },
+            trail_id=patient.trail_start_event_id,
         )
         logger.info("protocol_started", session_id=str(session.id), template_id=template_id)
         return session, template
@@ -126,16 +128,24 @@ class ProtocolService:
             raise InvalidAnswerValueError(template.scale.allowed_values)
 
         session.answers, outcome = apply_answer(template, session.answers, question_id, value)
-        if not outcome.completed:
-            self._sessions.save(session)
-            return session, template
+        if outcome.completed:
+            self._complete(session, template, patient, outcome)
+        self._sessions.save(session)
+        return session, template
 
+    def _complete(
+        self,
+        session: ProtocolSession,
+        template: ProtocolTemplate,
+        patient: Patient,
+        outcome: StepOutcome,
+    ) -> None:
+        """Marca a conclusão, emite `protocol_completed` e cria a jornada."""
         session.status = SessionStatus.COMPLETED
         session.score = outcome.score
         session.ended_by_skip = outcome.ended_by_skip
         session.skip_rule_id = outcome.skip_rule_id
         session.completed_at = self._clock.now()
-        self._sessions.save(session)
 
         # Minimização: o evento carrega o resultado, não as respostas individuais.
         self._events.append(
@@ -152,15 +162,17 @@ class ProtocolService:
                 "answered_count": len(session.answers),
                 "total_questions": len(template.questions),
             },
+            trail_id=patient.trail_start_event_id,
         )
+        # Sem o score no log: resultado clínico fica só no evento, não em plataformas de log.
         logger.info(
             "protocol_completed",
             session_id=str(session.id),
-            score=session.score,
             ended_by_skip=session.ended_by_skip,
+            answered_count=len(session.answers),
         )
 
-        journey = self._journeys.create_for_completed_protocol(patient, session)
+        journey = self._journeys.create_for_completed_protocol(
+            patient, session_id=session.id, template_id=template.template_id
+        )
         session.journey_id = journey.id
-        self._sessions.save(session)
-        return session, template

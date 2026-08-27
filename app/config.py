@@ -33,7 +33,6 @@ class Settings(BaseSettings):
 
     APP_NAME: str = "journey-core"
     APP_ENV: AppEnv = AppEnv.DEVELOPMENT
-    API_VERSION: str = "1.0.0"
 
     # PII: o telefone é persistido como HMAC-SHA256 com este salt. Sem default
     # proposital — um salt esquecido em produção seria um incidente, não um aviso.
@@ -47,11 +46,6 @@ class Settings(BaseSettings):
     LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     LOG_FORMAT: Literal["json", "console"] = "console"
     DOCS_ENABLED: bool = True
-
-    @property
-    def is_production(self) -> bool:
-        """Indica se a aplicação está em produção."""
-        return self.APP_ENV is AppEnv.PRODUCTION
 
 
 def load_settings() -> Settings:
