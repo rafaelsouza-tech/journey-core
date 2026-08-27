@@ -14,9 +14,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-# Formato dos identificadores do template (template_id, ids de perguntas e de regras).
-# Reutilizado pelos contratos da API: o que não casa é 422 antes de chegar ao serviço.
-IDENTIFIER_PATTERN = r"^[a-z][a-z0-9_]*$"
+from app.shared.declarative import IDENTIFIER_PATTERN
 
 # -----------------------------------------------------------------------------
 # Template (schema do JSON)
@@ -43,10 +41,12 @@ class Scale(_Strict):
 
     @property
     def allowed_values(self) -> list[int]:
+        """Valores aceitos como resposta."""
         return [option.value for option in self.options]
 
     @property
     def max_value(self) -> int:
+        """Maior valor da escala (base do `max_score`)."""
         return max(self.allowed_values)
 
     @model_validator(mode="after")
@@ -102,6 +102,7 @@ class Condition(_Strict):
     right: Operand
 
     def referenced_questions(self) -> set[str]:
+        """Ids de perguntas usados pelos operandos (validados contra o template)."""
         refs: set[str] = set()
         for operand in (self.left, self.right):
             if isinstance(operand, SumOf):
@@ -168,10 +169,12 @@ class ProtocolTemplate(_Strict):
 
     @property
     def ordered_questions(self) -> list[Question]:
+        """Perguntas na ordem de aplicação."""
         return sorted(self.questions, key=lambda question: question.order)
 
     @property
     def max_score(self) -> int:
+        """Pontuação máxima possível (maior valor da escala × número de perguntas)."""
         return self.scale.max_value * len(self.questions)
 
 
@@ -206,4 +209,5 @@ class ProtocolSession:
 
     @property
     def is_completed(self) -> bool:
+        """Sessão concluída (por skip ou pelo fim das perguntas)."""
         return self.status is SessionStatus.COMPLETED

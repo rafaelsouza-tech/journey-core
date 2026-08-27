@@ -1,9 +1,7 @@
-from typing import Any
-
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.conftest import FAKE_NAME, FAKE_PHONE, assert_no_pii, patient_payload
+from tests.conftest import FAKE_NAME, FAKE_PHONE, CreatePatient, assert_no_pii, patient_payload
 
 pytestmark = pytest.mark.integration
 
@@ -53,7 +51,7 @@ def test_invalid_phone_returns_422_without_echoing_input(
     assert "input" not in response.text
 
 
-def test_get_patient(client: TestClient, create_patient: Any) -> None:
+def test_get_patient(client: TestClient, create_patient: CreatePatient) -> None:
     created = create_patient()
     response = client.get(f"/patients/{created['id']}")
 

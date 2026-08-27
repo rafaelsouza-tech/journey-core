@@ -17,11 +17,14 @@ from app.main import create_app
 from tests.conftest import (
     FAKE_PHONE,
     TEST_SALT,
+    CreatePatient,
     answer,
     assert_no_pii,
+    event_names,
     patient_payload,
     run_protocol,
     start_protocol,
+    trail,
 )
 
 pytestmark = pytest.mark.integration
@@ -39,17 +42,6 @@ PROTOCOL_COMPLETED_KEYS = {
     "answered_count",
     "total_questions",
 }
-
-
-def _trail(client: TestClient, patient_id: str) -> list[dict[str, Any]]:
-    response = client.get("/events", params={"patient_id": patient_id})
-    assert response.status_code == 200, response.text
-    data: list[dict[str, Any]] = response.json()["data"]
-    return data
-
-
-def _event_names(client: TestClient, patient_id: str) -> list[str]:
-    return [event["event_name"] for event in _trail(client, patient_id)]
 
 
 def _get_step(client: TestClient, session_id: str) -> dict[str, Any]:
@@ -71,11 +63,11 @@ def _journeys_total(client: TestClient, patient_id: str) -> int:
 
 @pytest.mark.parametrize(("q1", "q2"), [(q1, q2) for q1 in range(4) for q2 in range(4)])
 def test_phq2_gate_is_evaluated_for_every_pair_of_first_answers(
-    client: TestClient, create_patient: Any, q1: int, q2: int
+    client: TestClient, create_patient: CreatePatient, q1: int, q2: int
 ) -> None:
     patient = create_patient()
     step = run_protocol(client, patient["id"], [q1, q2])
-    names = _event_names(client, patient["id"])
+    names = event_names(client, patient["id"])
 
     if q1 + q2 < 3:
         assert step["status"] == "completed"
@@ -90,7 +82,7 @@ def test_phq2_gate_is_evaluated_for_every_pair_of_first_answers(
         }
         assert step["journey_id"] is not None
         completed = next(
-            e for e in _trail(client, patient["id"]) if e["event_name"] == "protocol_completed"
+            e for e in trail(client, patient["id"]) if e["event_name"] == "protocol_completed"
         )
         assert completed["properties"]["score"] == q1 + q2
         assert completed["properties"]["answered_count"] == 2
@@ -111,7 +103,7 @@ def test_phq2_gate_is_evaluated_for_every_pair_of_first_answers(
 
 
 def test_progress_and_next_question_advance_one_step_at_a_time_until_the_end(
-    client: TestClient, create_patient: Any
+    client: TestClient, create_patient: CreatePatient
 ) -> None:
     patient = create_patient()
     values = [3, 0, 2, 1, 3, 0, 1, 2, 3]
@@ -149,7 +141,7 @@ def test_progress_and_next_question_advance_one_step_at_a_time_until_the_end(
 
 
 def test_each_completed_session_creates_its_own_journey(
-    client: TestClient, create_patient: Any
+    client: TestClient, create_patient: CreatePatient
 ) -> None:
     patient = create_patient()
     first = run_protocol(client, patient["id"], [1, 1])
@@ -158,7 +150,7 @@ def test_each_completed_session_creates_its_own_journey(
     assert first["session_id"] != second["session_id"]
     assert first["journey_id"] != second["journey_id"]
     assert _journeys_total(client, patient["id"]) == 2
-    names = _event_names(client, patient["id"])
+    names = event_names(client, patient["id"])
     assert names.count("protocol_completed") == 2 and names.count("journey_created") == 2
 
 
@@ -168,25 +160,25 @@ def test_each_completed_session_creates_its_own_journey(
 
 
 def test_protocol_events_are_minimal_and_emitted_only_at_start_and_end(
-    client: TestClient, create_patient: Any
+    client: TestClient, create_patient: CreatePatient
 ) -> None:
     patient = create_patient()
     values = [3, 0, 3, 0, 3, 0, 3, 0, 3]
     step = run_protocol(client, patient["id"], values)
-    trail = _trail(client, patient["id"])
-    names = [event["event_name"] for event in trail]
+    events = trail(client, patient["id"])
+    names = [event["event_name"] for event in events]
 
     assert names.count("protocol_started") == 1 and names.count("protocol_completed") == 1
     # Responder não gera evento: nada entre o início e o fim.
     assert names[names.index("protocol_started") + 1] == "protocol_completed"
 
-    started = next(e for e in trail if e["event_name"] == "protocol_started")
+    started = next(e for e in events if e["event_name"] == "protocol_started")
     assert started["properties"] == {
         "session_id": step["session_id"],
         "template_id": "phq9",
         "template_version": 1,
     }
-    completed = next(e for e in trail if e["event_name"] == "protocol_completed")
+    completed = next(e for e in events if e["event_name"] == "protocol_completed")
     assert set(completed["properties"]) == PROTOCOL_COMPLETED_KEYS
     assert completed["properties"] == {
         "session_id": step["session_id"],
@@ -210,7 +202,7 @@ def test_protocol_events_are_minimal_and_emitted_only_at_start_and_end(
 
 
 def test_session_reports_the_pinned_template_version_in_responses_and_events(
-    client: TestClient, container: Container, create_patient: Any
+    client: TestClient, container: Container, create_patient: CreatePatient
 ) -> None:
     patient = create_patient()
     pinned = container.templates.get("phq9").version
@@ -220,20 +212,20 @@ def test_session_reports_the_pinned_template_version_in_responses_and_events(
     assert _get_step(client, step["session_id"])["template_version"] == pinned
     versions = {
         e["event_name"]: e["properties"]["template_version"]
-        for e in _trail(client, patient["id"])
+        for e in trail(client, patient["id"])
         if e["event_name"] in {"protocol_started", "protocol_completed"}
     }
     assert versions == {"protocol_started": pinned, "protocol_completed": pinned}
 
 
 def test_session_refuses_to_continue_on_a_template_with_a_different_version(
-    client: TestClient, container: Container, create_patient: Any
+    client: TestClient, container: Container, create_patient: CreatePatient
 ) -> None:
     patient = create_patient()
     step = run_protocol(client, patient["id"], [2])
     session_id = step["session_id"]
     original = container.templates
-    names_before = _event_names(client, patient["id"])
+    names_before = event_names(client, patient["id"])
 
     # Simula a troca do JSON por uma versão nova enquanto a sessão está em curso.
     container.templates = TemplateRegistry([original.get("phq9").model_copy(update={"version": 2})])
@@ -245,7 +237,7 @@ def test_session_refuses_to_continue_on_a_template_with_a_different_version(
     assert blocked.status_code == 500
     assert blocked.json()["error"]["code"] == "CONFIGURATION_ERROR"
     assert_no_pii(fetched.text + blocked.text)
-    assert _event_names(client, patient["id"]) == names_before
+    assert event_names(client, patient["id"]) == names_before
 
     # Com a versão pinada de volta, a sessão segue de onde parou.
     container.templates = original
@@ -259,7 +251,7 @@ def test_session_refuses_to_continue_on_a_template_with_a_different_version(
 
 
 def test_paused_consent_blocks_answers_without_touching_the_session_and_resume_continues(
-    client: TestClient, create_patient: Any
+    client: TestClient, create_patient: CreatePatient
 ) -> None:
     patient = create_patient()
     step = run_protocol(client, patient["id"], [2])
@@ -272,7 +264,7 @@ def test_paused_consent_blocks_answers_without_touching_the_session_and_resume_c
     assert blocked.json()["error"]["code"] == "CONSENT_REQUIRED"
     assert blocked.json()["error"]["details"] == {"consent_status": "paused"}
     assert _get_step(client, session_id) == step
-    names = _event_names(client, patient["id"])
+    names = event_names(client, patient["id"])
     assert names[-1] == "consent_paused" and "protocol_completed" not in names
 
     assert client.post(f"/patients/{patient['id']}/consent/resume").status_code == 200
@@ -284,7 +276,7 @@ def test_paused_consent_blocks_answers_without_touching_the_session_and_resume_c
 
 
 def test_revoked_patient_with_an_open_session_is_refused_by_consent_not_by_conflict(
-    client: TestClient, create_patient: Any
+    client: TestClient, create_patient: CreatePatient
 ) -> None:
     patient = create_patient()
     step = start_protocol(client, patient["id"])
@@ -308,7 +300,7 @@ def test_revoked_patient_with_an_open_session_is_refused_by_consent_not_by_confl
 
 
 def test_rejected_answers_leave_the_session_untouched(
-    client: TestClient, create_patient: Any
+    client: TestClient, create_patient: CreatePatient
 ) -> None:
     patient = create_patient()
     step = run_protocol(client, patient["id"], [2])
@@ -334,7 +326,7 @@ def test_rejected_answers_leave_the_session_untouched(
     assert out_of_scale.json()["error"]["details"]["allowed"] == [0, 1, 2, 3]
 
     assert _get_step(client, session_id) == step
-    assert _event_names(client, patient["id"])[-1] == "protocol_started"
+    assert event_names(client, patient["id"])[-1] == "protocol_started"
 
 
 def test_unknown_patient_and_unknown_session_return_typed_404(client: TestClient) -> None:
@@ -356,7 +348,7 @@ def test_unknown_patient_and_unknown_session_return_typed_404(client: TestClient
 
 @pytest.mark.parametrize("bad_id", [FAKE_PHONE, "Q1", "q 1", "1q", "q-1", ""])
 def test_malformed_question_id_is_rejected_without_echoing_the_input(
-    client: TestClient, create_patient: Any, bad_id: str
+    client: TestClient, create_patient: CreatePatient, bad_id: str
 ) -> None:
     patient = create_patient()
     step = start_protocol(client, patient["id"])
@@ -373,7 +365,7 @@ def test_malformed_question_id_is_rejected_without_echoing_the_input(
 
 
 def test_malformed_template_id_is_rejected_without_echoing_the_input(
-    client: TestClient, create_patient: Any
+    client: TestClient, create_patient: CreatePatient
 ) -> None:
     patient = create_patient()
 
@@ -383,12 +375,12 @@ def test_malformed_template_id_is_rejected_without_echoing_the_input(
     assert response.json()["error"]["code"] == "VALIDATION_ERROR"
     assert "template_id" in response.json()["error"]["details"]["field_errors"]
     assert_no_pii(response.text)
-    assert "protocol_started" not in _event_names(client, patient["id"])
+    assert "protocol_started" not in event_names(client, patient["id"])
 
 
 @pytest.mark.parametrize("value", [True, "1", 1.0])
 def test_answer_value_must_be_a_json_integer_not_a_coercible_lookalike(
-    client: TestClient, create_patient: Any, value: Any
+    client: TestClient, create_patient: CreatePatient, value: Any
 ) -> None:
     patient = create_patient()
     step = start_protocol(client, patient["id"])
@@ -517,7 +509,7 @@ def test_a_fictitious_template_runs_end_to_end_through_the_same_service(
     assert journey["objective"] == "Objetivo do mini"
     assert [task["title"] for task in journey["tasks"]] == ["Tarefa única"]
     completed = next(
-        e for e in _trail(custom_client, patient["id"]) if e["event_name"] == "protocol_completed"
+        e for e in trail(custom_client, patient["id"]) if e["event_name"] == "protocol_completed"
     )
     assert completed["properties"]["template_id"] == "mini"
     assert completed["properties"]["template_version"] == 3

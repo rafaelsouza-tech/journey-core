@@ -35,4 +35,5 @@ class PlanRegistry:
         return plan
 
     def ids(self) -> list[str]:
+        """`template_id`s com plano carregado."""
         return list(self._plans)

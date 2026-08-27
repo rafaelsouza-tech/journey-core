@@ -81,6 +81,8 @@ def create_patient(client: TestClient) -> Callable[..., dict[str, Any]]:
     return _create
 
 
+CreatePatient = Callable[..., dict[str, Any]]
+
 PII_NEEDLES: tuple[str, ...] = (FAKE_PHONE, FAKE_PHONE_DIGITS, FAKE_NAME, FAKE_BIRTH_DATE)
 
 
@@ -131,3 +133,16 @@ def completed_patient(
     step = run_protocol(client, patient["id"], [1, 1])
     assert step["status"] == "completed"
     return {"patient": patient, "step": step, "journey_id": step["journey_id"]}
+
+
+def trail(client: TestClient, patient_id: str) -> list[dict[str, Any]]:
+    """Trilha do paciente via API (lista de eventos)."""
+    response = client.get("/events", params={"patient_id": patient_id})
+    assert response.status_code == 200, response.text
+    events: list[dict[str, Any]] = response.json()["data"]
+    return events
+
+
+def event_names(client: TestClient, patient_id: str) -> list[str]:
+    """Só os nomes dos eventos da trilha, na ordem."""
+    return [event["event_name"] for event in trail(client, patient_id)]

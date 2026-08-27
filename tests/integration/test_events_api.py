@@ -1,5 +1,4 @@
 from dataclasses import FrozenInstanceError
-from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -7,7 +6,7 @@ from fastapi.testclient import TestClient
 from app.container import Container
 from app.core.exceptions import PIIGuardViolationError
 from app.features.events.models import EventName
-from tests.conftest import assert_no_pii
+from tests.conftest import CreatePatient, assert_no_pii
 
 pytestmark = pytest.mark.integration
 
@@ -15,7 +14,7 @@ ENVELOPE_KEYS = {"event_id", "occurred_at", "event_name", "patient_id_hash", "pr
 
 
 def test_trail_uses_internal_id_in_query_and_hash_in_events(
-    client: TestClient, create_patient: Any
+    client: TestClient, create_patient: CreatePatient
 ) -> None:
     patient = create_patient()
     response = client.get("/events", params={"patient_id": patient["id"]})
@@ -31,14 +30,16 @@ def test_trail_uses_internal_id_in_query_and_hash_in_events(
         assert "patient_id" not in event
 
 
-def test_trail_has_no_pii(client: TestClient, create_patient: Any) -> None:
+def test_trail_has_no_pii(client: TestClient, create_patient: CreatePatient) -> None:
     patient = create_patient()
     response = client.get("/events", params={"patient_id": patient["id"]})
 
     assert_no_pii(response.text)
 
 
-def test_trail_can_be_filtered_by_event_name(client: TestClient, create_patient: Any) -> None:
+def test_trail_can_be_filtered_by_event_name(
+    client: TestClient, create_patient: CreatePatient
+) -> None:
     patient = create_patient()
     response = client.get(
         "/events", params={"patient_id": patient["id"], "event_name": "terms_accepted"}
@@ -55,7 +56,9 @@ def test_trail_for_unknown_patient_returns_404(client: TestClient) -> None:
     assert response.json()["error"]["code"] == "PATIENT_NOT_FOUND"
 
 
-def test_events_carry_correlation_id_from_request(client: TestClient, create_patient: Any) -> None:
+def test_events_carry_correlation_id_from_request(
+    client: TestClient, create_patient: CreatePatient
+) -> None:
     patient = create_patient()
     response = client.get("/events", params={"patient_id": patient["id"]})
 

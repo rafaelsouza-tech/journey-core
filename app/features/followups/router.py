@@ -3,8 +3,7 @@
 from fastapi import APIRouter
 
 from app.features.followups.dependencies import FollowupServiceDep
-from app.features.followups.engine import trace_as_json
-from app.features.followups.schemas import DecisionResponse, EvaluateRequest, RuleResultResponse
+from app.features.followups.schemas import DecisionResponse, EvaluateRequest
 
 router = APIRouter(prefix="/followups", tags=["Follow-ups"])
 
@@ -22,13 +21,4 @@ router = APIRouter(prefix="/followups", tags=["Follow-ups"])
 )
 async def evaluate_followup(data: EvaluateRequest, service: FollowupServiceDep) -> DecisionResponse:
     decision, event = service.evaluate(data.patient_id)
-    return DecisionResponse(
-        patient_id=data.patient_id,
-        eligible=decision.eligible,
-        reason=decision.reason,
-        template_key=decision.template_key,
-        rules_version=decision.rules_version,
-        evaluated_at=decision.evaluated_at,
-        event_id=event.event_id,
-        trace=[RuleResultResponse.model_validate(item) for item in trace_as_json(decision)],
-    )
+    return DecisionResponse.from_decision(data.patient_id, decision, event.event_id)

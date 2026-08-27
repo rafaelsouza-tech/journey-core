@@ -14,7 +14,15 @@ from app.core.clock import FixedClock
 from app.core.exceptions import ConfigurationError
 from app.features.followups.models import SkipReason
 from app.main import create_app
-from tests.conftest import FAKE_PHONE, TEST_SALT, assert_no_pii, patient_payload, run_protocol
+from tests.conftest import (
+    FAKE_PHONE,
+    TEST_SALT,
+    CreatePatient,
+    assert_no_pii,
+    patient_payload,
+    run_protocol,
+    trail,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -41,15 +49,8 @@ def _decide(client: TestClient, patient_id: str) -> dict[str, Any]:
     return body
 
 
-def _trail(client: TestClient, patient_id: str) -> list[dict[str, Any]]:
-    response = client.get("/events", params={"patient_id": patient_id})
-    assert response.status_code == 200, response.text
-    data: list[dict[str, Any]] = response.json()["data"]
-    return data
-
-
 def _event_by_id(client: TestClient, patient_id: str, event_id: str) -> dict[str, Any]:
-    return next(event for event in _trail(client, patient_id) if event["event_id"] == event_id)
+    return next(event for event in trail(client, patient_id) if event["event_id"] == event_id)
 
 
 def _instant(value: str) -> datetime:
@@ -69,7 +70,7 @@ def _complete_all_tasks(client: TestClient, journey_id: str) -> None:
 
 
 def test_trace_lists_the_five_rules_in_priority_order_even_when_almost_all_fail(
-    client: TestClient, create_patient: Any
+    client: TestClient, create_patient: CreatePatient
 ) -> None:
     patient = create_patient(terms_accepted=False)
 
@@ -97,7 +98,7 @@ def test_trace_lists_the_five_rules_in_priority_order_even_when_almost_all_fail(
 
 
 def test_accepted_patient_without_protocol_fails_on_the_second_rule_first(
-    client: TestClient, create_patient: Any
+    client: TestClient, create_patient: CreatePatient
 ) -> None:
     patient = create_patient()
 
@@ -127,7 +128,7 @@ def test_paused_or_revoked_consent_is_the_only_failing_rule_and_maps_its_own_rea
     assert body["reason"] == expected_reason  # reason_by_value: o valor observado escolhe o reason
     assert [item["passed"] for item in body["trace"]] == [False, True, True, True, True]
     assert body["trace"][0]["observed"] == observed
-    skipped = _trail(client, patient_id)[-1]
+    skipped = trail(client, patient_id)[-1]
     assert skipped["event_name"] == "followup_skipped"
     assert skipped["properties"]["reason"] == expected_reason
     assert_no_pii(client.get("/events", params={"patient_id": patient_id}).text)
@@ -155,7 +156,7 @@ def test_completed_journey_is_reported_as_no_active_journey_with_the_observed_st
     assert journey["observed"] == "concluida" and journey["passed"] is False
     assert tasks["observed"] == 0 and tasks["passed"] is False
     assert tasks["details"] == {"remaining": 1.0}
-    assert _trail(client, patient_id)[-1]["properties"]["reason"] == "no_active_journey"
+    assert trail(client, patient_id)[-1]["properties"]["reason"] == "no_active_journey"
 
 
 # -----------------------------------------------------------------------------
@@ -225,14 +226,14 @@ def test_followup_skipped_does_not_restart_the_cooldown(
     assert cooldown["observed"] == 72.0
     first_fired_at = _event_by_id(client, patient_id, first["event_id"])["occurred_at"]
     assert _instant(cooldown["details"]["last_event_at"]) == _instant(first_fired_at)
-    assert [e["event_name"] for e in _trail(client, patient_id)][-3:] == [
+    assert [e["event_name"] for e in trail(client, patient_id)][-3:] == [
         "followup_eligible",
         "followup_skipped",
         "followup_eligible",
     ]
 
 
-def test_cooldown_applies_per_patient(client: TestClient, create_patient: Any) -> None:
+def test_cooldown_applies_per_patient(client: TestClient, create_patient: CreatePatient) -> None:
     first = create_patient()
     second = create_patient(phone="+55 11 90000-0002")
     for patient in (first, second):
@@ -275,14 +276,14 @@ def test_each_evaluation_appends_exactly_one_event_mirroring_the_decision(
     client: TestClient, completed_patient: dict[str, Any]
 ) -> None:
     patient_id = completed_patient["patient"]["id"]
-    before = len(_trail(client, patient_id))
+    before = len(trail(client, patient_id))
 
     eligible = _decide(client, patient_id)
     skipped = _decide(client, patient_id)
 
-    trail = _trail(client, patient_id)
-    assert len(trail) == before + 2
-    eligible_event, skipped_event = trail[-2], trail[-1]
+    events = trail(client, patient_id)
+    assert len(events) == before + 2
+    eligible_event, skipped_event = events[-2], events[-1]
     assert eligible_event["event_name"] == "followup_eligible"
     assert eligible_event["event_id"] == eligible["event_id"]
     assert eligible_event["properties"] == {

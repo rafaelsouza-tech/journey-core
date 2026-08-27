@@ -27,7 +27,7 @@ logger = get_logger(__name__)
 
 def require_active_consent(patient: Patient) -> None:
     """
-    Garante consentimento ativo antes de iniciar protocolo, responder ou criar jornada.
+    Garante consentimento ativo antes de qualquer processamento (protocolo, tarefa, jornada).
 
     Raises:
         ConsentRequiredError: 403 tipado com o status atual.
@@ -60,6 +60,10 @@ class PatientService:
 
         now = self._clock.now()
         status = ConsentStatus.ACCEPTED if data.terms_accepted else ConsentStatus.PENDING
+        # O `patient_created` nasce antes do cadastro: é ele que identifica a trilha.
+        created = self._events.append(
+            EventName.PATIENT_CREATED, phone_hash, {"consent_status": status}
+        )
         patient = Patient(
             id=uuid4(),
             phone_hash=phone_hash,
@@ -71,11 +75,8 @@ class PatientService:
             terms_accepted_at=now if data.terms_accepted else None,
             consent_updated_at=now,
             created_at=now,
+            trail_start_event_id=created.event_id,
         )
-        created = self._events.append(
-            EventName.PATIENT_CREATED, phone_hash, {"consent_status": status}
-        )
-        patient.trail_start_event_id = created.event_id
         self._patients.add(patient)
         if data.terms_accepted:
             self._events.append(

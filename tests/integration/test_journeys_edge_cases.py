@@ -29,9 +29,12 @@ from tests.conftest import (
     FAKE_NAME,
     FAKE_PHONE,
     FROZEN_NOW,
+    CreatePatient,
     assert_no_pii,
+    event_names,
     patient_payload,
     run_protocol,
+    trail,
 )
 
 pytestmark = pytest.mark.integration
@@ -56,17 +59,6 @@ JOURNEY_ROUTES = {
     ("/patients/{patient_id}/journeys", "get"),
     ("/journeys/{journey_id}/tasks/{task_id}/complete", "post"),
 }
-
-
-def _trail(client: TestClient, patient_id: str) -> list[dict[str, Any]]:
-    response = client.get("/events", params={"patient_id": patient_id})
-    assert response.status_code == 200, response.text
-    data: list[dict[str, Any]] = response.json()["data"]
-    return data
-
-
-def _event_names(client: TestClient, patient_id: str) -> list[str]:
-    return [event["event_name"] for event in _trail(client, patient_id)]
 
 
 def _get_journey(client: TestClient, journey_id: str) -> dict[str, Any]:
@@ -196,7 +188,7 @@ def test_journey_contract_mirrors_the_plan_with_id_title_and_status_per_task(
 
 
 def test_journey_and_session_are_linked_both_ways_and_journey_created_is_exact(
-    client: TestClient, create_patient: Any
+    client: TestClient, create_patient: CreatePatient
 ) -> None:
     patient = create_patient()
     step = run_protocol(client, patient["id"], [1, 1])
@@ -206,7 +198,7 @@ def test_journey_and_session_are_linked_both_ways_and_journey_created_is_exact(
     assert session["journey_id"] == journey["id"]
     assert journey["source_session_id"] == session["session_id"]
     assert journey["patient_id"] == patient["id"]
-    created = next(e for e in _trail(client, patient["id"]) if e["event_name"] == "journey_created")
+    created = next(e for e in trail(client, patient["id"]) if e["event_name"] == "journey_created")
     assert created["patient_id_hash"] == patient["phone_hash"]
     assert created["properties"] == {
         "journey_id": journey["id"],
@@ -218,7 +210,7 @@ def test_journey_and_session_are_linked_both_ways_and_journey_created_is_exact(
 
 
 def test_same_plan_is_applied_whether_the_protocol_ends_by_skip_or_runs_to_the_end(
-    client: TestClient, create_patient: Any
+    client: TestClient, create_patient: CreatePatient
 ) -> None:
     """Um plano por template, independente do score: plano por faixa seria decisão clínica."""
     by_skip = create_patient()
@@ -236,7 +228,7 @@ def test_same_plan_is_applied_whether_the_protocol_ends_by_skip_or_runs_to_the_e
 
 
 def test_patient_without_accepted_terms_has_an_empty_list_and_no_way_to_get_a_journey(
-    client: TestClient, create_patient: Any
+    client: TestClient, create_patient: CreatePatient
 ) -> None:
     patient = create_patient(terms_accepted=False)
 
@@ -246,7 +238,7 @@ def test_patient_without_accepted_terms_has_an_empty_list_and_no_way_to_get_a_jo
     assert blocked.status_code == 403
     assert blocked.json()["error"]["code"] == "CONSENT_REQUIRED"
     assert listing == {"patient_id": patient["id"], "total": 0, "data": []}
-    assert "journey_created" not in _event_names(client, patient["id"])
+    assert "journey_created" not in event_names(client, patient["id"])
 
 
 # -----------------------------------------------------------------------------
@@ -281,8 +273,8 @@ def test_each_completion_stamps_the_clock_and_the_last_one_completes_the_journey
     assert [datetime.fromisoformat(t["completed_at"]) for t in journey["tasks"]] == stamps
     assert journey["created_at"] != journey["completed_at"]
 
-    trail = _trail(client, patient_id)
-    task_events = [e for e in trail if e["event_name"] == "task_completed"]
+    events = trail(client, patient_id)
+    task_events = [e for e in events if e["event_name"] == "task_completed"]
     assert [e["properties"] for e in task_events] == [
         {
             "journey_id": journey_id,
@@ -293,10 +285,10 @@ def test_each_completion_stamps_the_clock_and_the_last_one_completes_the_journey
         for task, remaining in zip(journey["tasks"], [2, 1, 0], strict=True)
     ]
     assert [datetime.fromisoformat(e["occurred_at"]) for e in task_events] == stamps
-    assert trail[-1]["event_name"] == "journey_completed"
-    assert trail[-1]["properties"] == {"journey_id": journey_id}
-    assert datetime.fromisoformat(trail[-1]["occurred_at"]) == stamps[-1]
-    assert {e["patient_id_hash"] for e in trail} == {completed_patient["patient"]["phone_hash"]}
+    assert events[-1]["event_name"] == "journey_completed"
+    assert events[-1]["properties"] == {"journey_id": journey_id}
+    assert datetime.fromisoformat(events[-1]["occurred_at"]) == stamps[-1]
+    assert {e["patient_id_hash"] for e in events} == {completed_patient["patient"]["phone_hash"]}
 
 
 def test_journey_completed_is_emitted_once_and_only_with_the_last_task(
@@ -308,11 +300,11 @@ def test_journey_completed_is_emitted_once_and_only_with_the_last_task(
 
     _complete(client, journey_id, first)
     _complete(client, journey_id, second)
-    assert "journey_completed" not in _event_names(client, patient_id)
+    assert "journey_completed" not in event_names(client, patient_id)
     assert _get_journey(client, journey_id)["status"] == "em_andamento"
 
     _complete(client, journey_id, last)
-    names = _event_names(client, patient_id)
+    names = event_names(client, patient_id)
     assert names.count("journey_completed") == 1
     assert names[-2:] == ["task_completed", "journey_completed"]
 
@@ -323,7 +315,7 @@ def test_completed_journey_rejects_every_task_with_409_and_emits_nothing_more(
     patient_id = completed_patient["patient"]["id"]
     journey_id = completed_patient["journey_id"]
     _complete_all(client, journey_id)
-    before = _trail(client, patient_id)
+    before = trail(client, patient_id)
     journey_before = _get_journey(client, journey_id)
 
     for task_id in _task_ids(client, journey_id):
@@ -333,7 +325,7 @@ def test_completed_journey_rejects_every_task_with_409_and_emits_nothing_more(
         assert response.json()["error"]["details"] == {"task_id": task_id}
         assert_no_pii(response.text)
 
-    assert _trail(client, patient_id) == before
+    assert trail(client, patient_id) == before
     assert _get_journey(client, journey_id) == journey_before
     assert before[-1]["event_name"] == "journey_completed"
 
@@ -354,15 +346,15 @@ def test_single_task_plan_completes_the_journey_on_the_first_completion(
     assert response.status_code == 200, response.text
     assert response.json()["status"] == "concluida"
     assert response.json()["tasks"][0]["status"] == "concluida"
-    trail = _trail(single_task_client, patient["id"])
-    assert [e["event_name"] for e in trail[-3:]] == [
+    events = trail(single_task_client, patient["id"])
+    assert [e["event_name"] for e in events[-3:]] == [
         "journey_created",
         "task_completed",
         "journey_completed",
     ]
-    assert trail[-3]["properties"]["task_count"] == 1
-    assert trail[-3]["properties"]["plan_version"] == 7
-    assert trail[-2]["properties"]["remaining_tasks"] == 0
+    assert events[-3]["properties"]["task_count"] == 1
+    assert events[-3]["properties"]["plan_version"] == 7
+    assert events[-2]["properties"]["remaining_tasks"] == 0
 
 
 # -----------------------------------------------------------------------------
@@ -371,7 +363,7 @@ def test_single_task_plan_completes_the_journey_on_the_first_completion(
 
 
 def test_task_of_another_patients_journey_is_404_and_leaves_both_journeys_untouched(
-    client: TestClient, create_patient: Any
+    client: TestClient, create_patient: CreatePatient
 ) -> None:
     first = create_patient()
     second = create_patient(phone="+55 11 90000-0002")
@@ -387,12 +379,12 @@ def test_task_of_another_patients_journey_is_404_and_leaves_both_journeys_untouc
     assert response.json()["error"]["details"]["resource_id"] == foreign_task
     assert_no_pii(response.text)
     assert (_get_journey(client, first_journey), _get_journey(client, second_journey)) == before
-    assert "task_completed" not in _event_names(client, first["id"])
-    assert "task_completed" not in _event_names(client, second["id"])
+    assert "task_completed" not in event_names(client, first["id"])
+    assert "task_completed" not in event_names(client, second["id"])
 
 
 def test_task_id_is_scoped_to_its_journey_even_within_the_same_patient(
-    client: TestClient, create_patient: Any
+    client: TestClient, create_patient: CreatePatient
 ) -> None:
     patient = create_patient()
     first_journey = run_protocol(client, patient["id"], [1, 1])["journey_id"]
@@ -407,7 +399,7 @@ def test_task_id_is_scoped_to_its_journey_even_within_the_same_patient(
     assert right.status_code == 200
     assert _get_journey(client, first_journey)["tasks"][0]["status"] == "em_andamento"
     assert _get_journey(client, second_journey)["tasks"][0]["status"] == "concluida"
-    task_events = [e for e in _trail(client, patient["id"]) if e["event_name"] == "task_completed"]
+    task_events = [e for e in trail(client, patient["id"]) if e["event_name"] == "task_completed"]
     assert [e["properties"]["journey_id"] for e in task_events] == [second_journey]
 
 
@@ -423,7 +415,7 @@ def test_unknown_journey_on_completion_is_404_journey_not_found(
     assert response.json()["error"]["code"] == "JOURNEY_NOT_FOUND"
     assert response.json()["error"]["details"] == {"resource": "Jornada", "resource_id": UNKNOWN_ID}
     assert _get_journey(client, journey_id)["tasks"][0]["status"] == "em_andamento"
-    assert "task_completed" not in _event_names(client, completed_patient["patient"]["id"])
+    assert "task_completed" not in event_names(client, completed_patient["patient"]["id"])
 
 
 @pytest.mark.parametrize("raw", [FAKE_PHONE, FAKE_NAME, "not-a-uuid"])
@@ -432,7 +424,7 @@ def test_malformed_journey_or_task_id_is_422_without_echoing_the_input(
 ) -> None:
     patient_id = completed_patient["patient"]["id"]
     journey_id = completed_patient["journey_id"]
-    names_before = _event_names(client, patient_id)
+    names_before = event_names(client, patient_id)
 
     only_task = _complete(client, journey_id, raw)
     both = _complete(client, raw, raw)
@@ -450,7 +442,7 @@ def test_malformed_journey_or_task_id_is_422_without_echoing_the_input(
         assert set(response.json()["error"]["details"]["field_errors"]) == fields
         assert raw not in response.text
         assert_no_pii(response.text)
-    assert _event_names(client, patient_id) == names_before
+    assert event_names(client, patient_id) == names_before
 
 
 # -----------------------------------------------------------------------------
@@ -473,14 +465,14 @@ def test_paused_consent_blocks_completion_without_side_effects_and_resume_contin
     assert blocked.json()["error"]["code"] == "CONSENT_REQUIRED"
     assert blocked.json()["error"]["details"] == {"consent_status": "paused"}
     assert _get_journey(client, journey_id) == before
-    names = _event_names(client, patient_id)
+    names = event_names(client, patient_id)
     assert names[-1] == "consent_paused" and "task_completed" not in names
 
     assert client.post(f"/patients/{patient_id}/consent/resume").status_code == 200
     resumed = _complete(client, journey_id, task_id)
     assert resumed.status_code == 200
     assert resumed.json()["tasks"][0]["status"] == "concluida"
-    assert _event_names(client, patient_id)[-2:] == ["consent_resumed", "task_completed"]
+    assert event_names(client, patient_id)[-2:] == ["consent_resumed", "task_completed"]
 
 
 def test_revoked_consent_blocks_completion_but_the_journey_stays_readable_and_pseudonymized(
@@ -506,7 +498,7 @@ def test_revoked_consent_blocks_completion_but_the_journey_stays_readable_and_ps
     assert before["status"] == "em_andamento"  # revogar não conclui nem apaga a jornada
     for text in (blocked.text, fetched.text, listing.text):
         assert_no_pii(text)
-    names = _event_names(client, patient_id)
+    names = event_names(client, patient_id)
     assert names[-1] == "consent_revoked" and names.count("task_completed") == 1
 
 
@@ -516,7 +508,7 @@ def test_revoked_consent_blocks_completion_but_the_journey_stays_readable_and_ps
 
 
 def test_listing_is_isolated_per_patient_and_kept_in_creation_order(
-    client: TestClient, create_patient: Any
+    client: TestClient, create_patient: CreatePatient
 ) -> None:
     first = create_patient()
     second = create_patient(phone="+55 11 90000-0002")
@@ -579,7 +571,7 @@ def test_new_protocol_after_a_finished_journey_creates_a_second_one_that_becomes
     ]
     assert listing["data"][1]["source_session_id"] == step["session_id"]
     assert all(t["status"] == "em_andamento" for t in listing["data"][1]["tasks"])
-    created = [e for e in _trail(client, patient_id) if e["event_name"] == "journey_created"]
+    created = [e for e in trail(client, patient_id) if e["event_name"] == "journey_created"]
     assert [e["properties"]["journey_id"] for e in created] == [first_journey, second_journey]
 
     # O motor de follow-up enxerga a jornada mais recente, não a concluída.
@@ -607,7 +599,7 @@ def test_a_second_journey_coexists_with_an_unfinished_first_one(
     assert [t["status"] for t in first["tasks"]] == ["concluida", "concluida", "em_andamento"]
     assert all(t["status"] == "em_andamento" for t in second["tasks"])
     assert first["status"] == second["status"] == "em_andamento"
-    task_events = [e for e in _trail(client, patient_id) if e["event_name"] == "task_completed"]
+    task_events = [e for e in trail(client, patient_id) if e["event_name"] == "task_completed"]
     assert [e["properties"]["journey_id"] for e in task_events] == [first_journey, first_journey]
     assert [e["properties"]["remaining_tasks"] for e in task_events] == [2, 1]
 
@@ -639,7 +631,7 @@ def test_journey_responses_errors_and_events_never_carry_pii(
         assert_no_pii(response.text)
     journey_events = [
         e
-        for e in _trail(client, patient_id)
+        for e in trail(client, patient_id)
         if e["event_name"] in {"journey_created", "task_completed"}
     ]
     assert len(journey_events) == 2

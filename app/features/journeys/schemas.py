@@ -8,6 +8,8 @@ from app.shared.schemas import BaseSchema
 
 
 class TaskResponse(BaseSchema):
+    """Tarefa da jornada (id, título e status literal do enunciado)."""
+
     id: UUID
     key: str
     title: str
@@ -16,6 +18,8 @@ class TaskResponse(BaseSchema):
 
 
 class JourneyResponse(BaseSchema):
+    """Jornada com objetivo e tarefas."""
+
     id: UUID
     patient_id: UUID
     source_session_id: UUID
@@ -29,6 +33,8 @@ class JourneyResponse(BaseSchema):
 
 
 class JourneyListResponse(BaseSchema):
+    """Jornadas de um paciente."""
+
     patient_id: UUID
     total: int
     data: list[JourneyResponse]

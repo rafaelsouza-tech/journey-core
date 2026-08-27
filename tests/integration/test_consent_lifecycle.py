@@ -8,8 +8,10 @@ from fastapi.testclient import TestClient
 from tests.conftest import (
     FAKE_BIRTH_DATE,
     FAKE_NAME,
+    CreatePatient,
     answer,
     assert_no_pii,
+    event_names,
     patient_payload,
     start_protocol,
 )
@@ -21,26 +23,21 @@ def consent(client: TestClient, patient_id: str, action: str) -> Any:
     return client.post(f"/patients/{patient_id}/consent/{action}")
 
 
-def names(client: TestClient, patient_id: str) -> list[str]:
-    events: list[dict[str, Any]] = client.get("/events", params={"patient_id": patient_id}).json()[
-        "data"
-    ]
-    return [e["event_name"] for e in events]
-
-
-def test_accept_from_pending_emits_terms_accepted(client: TestClient, create_patient: Any) -> None:
+def test_accept_from_pending_emits_terms_accepted(
+    client: TestClient, create_patient: CreatePatient
+) -> None:
     patient = create_patient(terms_accepted=False)
     response = consent(client, patient["id"], "accept")
 
     assert response.status_code == 200
     assert response.json()["consent_status"] == "accepted"
     assert response.json()["terms_accepted_at"] is not None
-    assert names(client, patient["id"]) == ["patient_created", "terms_accepted"]
+    assert event_names(client, patient["id"]) == ["patient_created", "terms_accepted"]
     assert start_protocol(client, patient["id"])["status"] == "in_progress"
 
 
 def test_pause_blocks_processing_and_resume_restores_it(
-    client: TestClient, create_patient: Any
+    client: TestClient, create_patient: CreatePatient
 ) -> None:
     patient = create_patient()
     assert consent(client, patient["id"], "pause").json()["consent_status"] == "paused"
@@ -53,7 +50,7 @@ def test_pause_blocks_processing_and_resume_restores_it(
 
     assert consent(client, patient["id"], "resume").json()["consent_status"] == "accepted"
     assert start_protocol(client, patient["id"])["status"] == "in_progress"
-    assert names(client, patient["id"])[2:5] == [
+    assert event_names(client, patient["id"])[2:5] == [
         "consent_paused",
         "followup_skipped",
         "consent_resumed",
@@ -88,7 +85,9 @@ def test_revoke_erases_pii_but_keeps_the_trail_intact(
     assert_no_pii(client.get("/events", params={"patient_id": patient["id"]}).text)
 
 
-def test_revoked_patient_is_blocked_everywhere(client: TestClient, create_patient: Any) -> None:
+def test_revoked_patient_is_blocked_everywhere(
+    client: TestClient, create_patient: CreatePatient
+) -> None:
     patient = create_patient()
     step = start_protocol(client, patient["id"])
     consent(client, patient["id"], "revoke")
@@ -122,7 +121,7 @@ def test_revoked_patient_is_blocked_everywhere(client: TestClient, create_patien
 )
 def test_invalid_transitions_return_409_typed(
     client: TestClient,
-    create_patient: Any,
+    create_patient: CreatePatient,
     setup_actions: list[str],
     action: str,
     expected_from: str,
@@ -139,7 +138,7 @@ def test_invalid_transitions_return_409_typed(
 
 
 def test_pending_patient_cannot_pause_but_can_revoke(
-    client: TestClient, create_patient: Any
+    client: TestClient, create_patient: CreatePatient
 ) -> None:
     patient = create_patient(terms_accepted=False)
 
@@ -147,7 +146,7 @@ def test_pending_patient_cannot_pause_but_can_revoke(
     assert consent(client, patient["id"], "revoke").json()["consent_status"] == "revoked"
 
 
-def test_unknown_action_returns_422(client: TestClient, create_patient: Any) -> None:
+def test_unknown_action_returns_422(client: TestClient, create_patient: CreatePatient) -> None:
     patient = create_patient()
 
     assert consent(client, patient["id"], "delete").status_code == 422
@@ -174,7 +173,7 @@ def test_revoke_releases_the_phone_and_a_new_registration_has_its_own_trail(
     new_trail = client.get("/events", params={"patient_id": new["id"]}).json()["data"]
     assert [e["event_name"] for e in new_trail] == ["patient_created", "terms_accepted"]
     assert client.get("/events", params={"patient_id": old["id"]}).json()["data"] == old_trail
-    assert names(client, old["id"])[-1] == "consent_revoked"
+    assert event_names(client, old["id"])[-1] == "consent_revoked"
 
     # O cooldown também é por cadastro: a história antiga não bloqueia o novo titular.
     decision = client.post("/followups/evaluate", json={"patient_id": new["id"]}).json()
@@ -183,7 +182,7 @@ def test_revoke_releases_the_phone_and_a_new_registration_has_its_own_trail(
 
 
 def test_revoked_patient_still_readable_but_cannot_be_found_by_phone_again(
-    client: TestClient, create_patient: Any
+    client: TestClient, create_patient: CreatePatient
 ) -> None:
     patient = create_patient()
     consent(client, patient["id"], "revoke")

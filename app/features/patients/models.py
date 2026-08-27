@@ -7,6 +7,8 @@ from uuid import UUID
 
 
 class Sex(StrEnum):
+    """Sexo declarado no cadastro."""
+
     FEMALE = "female"
     MALE = "male"
     OTHER = "other"
@@ -27,6 +29,8 @@ class ConsentStatus(StrEnum):
 
 
 class ConsentAction(StrEnum):
+    """Ações do ciclo de vida do consentimento (ver `CONSENT_TRANSITIONS`)."""
+
     ACCEPT = "accept"
     PAUSE = "pause"
     RESUME = "resume"
@@ -60,9 +64,9 @@ class Patient:
     terms_accepted_at: datetime | None
     consent_updated_at: datetime
     created_at: datetime
-    # Evento `patient_created` deste cadastro: a trilha do paciente começa aqui. Um mesmo
+    # Evento `patient_created` deste cadastro: identifica a trilha do paciente. Um mesmo
     # telefone pode ter tido outro cadastro (revogado) — este não enxerga a história daquele.
-    trail_start_event_id: UUID | None = None
+    trail_start_event_id: UUID
 
     @property
     def has_active_consent(self) -> bool:

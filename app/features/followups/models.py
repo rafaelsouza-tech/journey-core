@@ -7,6 +7,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.shared.declarative import IDENTIFIER_PATTERN
+
 
 class SkipReason(StrEnum):
     """Motivos tipados de recusa. O YAML só pode referenciar valores daqui."""
@@ -32,10 +34,11 @@ class Expectation(BaseModel):
     equals: Any | None = None
     not_equals: Any | None = None
     in_: list[Any] | None = Field(default=None, alias="in")
-    gt: float | None = None
-    gte: float | None = None
-    lt: float | None = None
-    lte: float | None = None
+    # `int | float` (nessa ordem): `gte: 72` no YAML continua 72 no trace, não 72.0.
+    gt: int | float | None = None
+    gte: int | float | None = None
+    lt: int | float | None = None
+    lte: int | float | None = None
 
     @model_validator(mode="after")
     def _exactly_one(self) -> "Expectation":
@@ -50,10 +53,12 @@ class Expectation(BaseModel):
 
     @property
     def operator(self) -> str:
+        """Nome do comparador (`equals`, `gte`, …)."""
         return next(iter(self.as_dict()))
 
     @property
     def threshold(self) -> Any:
+        """Valor esperado."""
         return next(iter(self.as_dict().values()))
 
     def evaluate(self, observed: Any) -> bool:
@@ -82,7 +87,7 @@ class Rule(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    id: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
+    id: str = Field(pattern=IDENTIFIER_PATTERN)
     description: str | None = None
     check: str = Field(description="Nome de um check do vocabulário (checks.py)")
     params: dict[str, Any] = Field(default_factory=dict)
@@ -100,7 +105,7 @@ class RuleSet(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     version: int = Field(ge=1)
-    template_key: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
+    template_key: str = Field(pattern=IDENTIFIER_PATTERN)
     rules: list[Rule] = Field(min_length=1)
 
     @model_validator(mode="after")

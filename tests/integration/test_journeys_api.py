@@ -3,27 +3,26 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.conftest import run_protocol, start_protocol
+from tests.conftest import CreatePatient, event_names, run_protocol, start_protocol
 
 pytestmark = pytest.mark.integration
 
 
-def _event_names(client: TestClient, patient_id: str) -> list[str]:
-    trail = client.get("/events", params={"patient_id": patient_id}).json()
-    return [e["event_name"] for e in trail["data"]]
-
-
-def test_no_journey_before_protocol_completion(client: TestClient, create_patient: Any) -> None:
+def test_no_journey_before_protocol_completion(
+    client: TestClient, create_patient: CreatePatient
+) -> None:
     patient = create_patient()
     start_protocol(client, patient["id"])
     response = client.get(f"/patients/{patient['id']}/journeys")
 
     assert response.status_code == 200
     assert response.json()["total"] == 0
-    assert "journey_created" not in _event_names(client, patient["id"])
+    assert "journey_created" not in event_names(client, patient["id"])
 
 
-def test_journey_created_on_protocol_completion(client: TestClient, create_patient: Any) -> None:
+def test_journey_created_on_protocol_completion(
+    client: TestClient, create_patient: CreatePatient
+) -> None:
     patient = create_patient()
     step = run_protocol(client, patient["id"], [1, 1])
     response = client.get(f"/journeys/{step['journey_id']}")
@@ -37,11 +36,11 @@ def test_journey_created_on_protocol_completion(client: TestClient, create_patie
     assert isinstance(journey["objective"], str) and journey["objective"]
     assert [t["status"] for t in journey["tasks"]] == ["em_andamento"] * 3
     assert all({"id", "title", "status"} <= set(t) for t in journey["tasks"])
-    assert _event_names(client, patient["id"])[-2:] == ["protocol_completed", "journey_created"]
+    assert event_names(client, patient["id"])[-2:] == ["protocol_completed", "journey_created"]
 
 
 def test_journey_is_also_created_when_protocol_runs_to_the_end(
-    client: TestClient, create_patient: Any
+    client: TestClient, create_patient: CreatePatient
 ) -> None:
     patient = create_patient()
     step = run_protocol(client, patient["id"], [3] * 9)
@@ -51,7 +50,7 @@ def test_journey_is_also_created_when_protocol_runs_to_the_end(
 
 
 def test_there_is_no_endpoint_to_create_a_journey_directly(
-    client: TestClient, create_patient: Any
+    client: TestClient, create_patient: CreatePatient
 ) -> None:
     patient = create_patient()
 
@@ -78,7 +77,7 @@ def test_complete_task_emits_event_and_journey_completes_on_last_task(
 
     assert last.json()["status"] == "concluida"
     assert last.json()["completed_at"] is not None
-    names = _event_names(client, patient_id)
+    names = event_names(client, patient_id)
     assert names.count("task_completed") == 3
     assert names[-1] == "journey_completed"
     trail = client.get("/events", params={"patient_id": patient_id}).json()["data"]
@@ -98,7 +97,7 @@ def test_completing_a_task_twice_returns_409_without_duplicate_event(
 
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "TASK_ALREADY_COMPLETED"
-    assert _event_names(client, patient_id).count("task_completed") == 1
+    assert event_names(client, patient_id).count("task_completed") == 1
 
 
 def test_unknown_task_returns_404(client: TestClient, completed_patient: dict[str, Any]) -> None:

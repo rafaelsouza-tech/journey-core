@@ -30,6 +30,7 @@ from tests.conftest import (
     FAKE_PHONE,
     FAKE_PHONE_DIGITS,
     FROZEN_NOW,
+    CreatePatient,
     assert_no_pii,
     patient_payload,
 )
@@ -208,7 +209,7 @@ def test_path_and_query_validation_errors_never_echo_a_fragment_of_the_input(
 
 
 def test_unknown_event_name_filter_is_rejected_without_echo(
-    client: TestClient, create_patient: Any
+    client: TestClient, create_patient: CreatePatient
 ) -> None:
     patient = create_patient()
     response = client.get(
@@ -382,7 +383,7 @@ def test_event_properties_are_read_only_even_without_explicit_properties() -> No
 
 
 def test_trail_filter_by_absent_event_name_returns_empty_list(
-    client: TestClient, create_patient: Any
+    client: TestClient, create_patient: CreatePatient
 ) -> None:
     patient = create_patient(terms_accepted=False)
     response = client.get(
@@ -399,7 +400,7 @@ def test_trail_filter_by_absent_event_name_returns_empty_list(
 
 
 def test_trail_of_one_patient_never_leaks_into_another(
-    client: TestClient, create_patient: Any
+    client: TestClient, create_patient: CreatePatient
 ) -> None:
     first = create_patient()
     second = create_patient(phone="+55 11 90000-0002", terms_accepted=False)
@@ -418,7 +419,7 @@ def test_trail_of_one_patient_never_leaks_into_another(
 
 
 def test_full_consent_lifecycle_emits_one_event_per_transition_with_previous_status(
-    client: TestClient, create_patient: Any
+    client: TestClient, create_patient: CreatePatient
 ) -> None:
     patient = create_patient(terms_accepted=False)
     for action in ("accept", "pause", "resume", "revoke"):
@@ -445,7 +446,7 @@ def test_full_consent_lifecycle_emits_one_event_per_transition_with_previous_sta
     [([], "pending"), (["accept"], "accepted"), (["accept", "pause"], "paused")],
 )
 def test_revoke_erases_pii_from_every_non_terminal_state(
-    client: TestClient, create_patient: Any, setup: list[str], expected_previous: str
+    client: TestClient, create_patient: CreatePatient, setup: list[str], expected_previous: str
 ) -> None:
     patient = create_patient(terms_accepted=False)
     for action in setup:
@@ -468,7 +469,7 @@ def test_revoke_erases_pii_from_every_non_terminal_state(
 
 
 def test_invalid_transition_leaves_patient_and_trail_untouched(
-    client: TestClient, create_patient: Any
+    client: TestClient, create_patient: CreatePatient
 ) -> None:
     patient = create_patient()
     before_trail = client.get("/events", params={"patient_id": patient["id"]}).json()["data"]

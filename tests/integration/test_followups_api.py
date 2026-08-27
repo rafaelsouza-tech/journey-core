@@ -4,7 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.core.clock import FixedClock
-from tests.conftest import assert_no_pii, run_protocol
+from tests.conftest import CreatePatient, assert_no_pii, run_protocol, trail
 
 pytestmark = pytest.mark.integration
 
@@ -13,14 +13,9 @@ def evaluate(client: TestClient, patient_id: str) -> Any:
     return client.post("/followups/evaluate", json={"patient_id": patient_id})
 
 
-def trail(client: TestClient, patient_id: str) -> list[dict[str, Any]]:
-    events: list[dict[str, Any]] = client.get("/events", params={"patient_id": patient_id}).json()[
-        "data"
-    ]
-    return events
-
-
-def test_not_eligible_before_protocol_completion(client: TestClient, create_patient: Any) -> None:
+def test_not_eligible_before_protocol_completion(
+    client: TestClient, create_patient: CreatePatient
+) -> None:
     patient = create_patient()
     response = evaluate(client, patient["id"])
 
@@ -35,7 +30,7 @@ def test_not_eligible_before_protocol_completion(client: TestClient, create_pati
     assert skipped["event_id"] == body["event_id"]
 
 
-def test_missing_consent_reason(client: TestClient, create_patient: Any) -> None:
+def test_missing_consent_reason(client: TestClient, create_patient: CreatePatient) -> None:
     patient = create_patient(terms_accepted=False)
 
     assert evaluate(client, patient["id"]).json()["reason"] == "missing_consent"

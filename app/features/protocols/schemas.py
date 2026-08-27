@@ -5,23 +5,20 @@ from uuid import UUID
 from pydantic import Field
 
 from app.features.protocols.engine import next_question
-from app.features.protocols.models import (
-    IDENTIFIER_PATTERN,
-    ProtocolSession,
-    ProtocolTemplate,
-    SessionStatus,
-)
+from app.features.protocols.models import ProtocolSession, ProtocolTemplate, SessionStatus
+from app.shared.declarative import IDENTIFIER_PATTERN
 from app.shared.schemas import BaseSchema
-
-# Ids fora do formato dos templates são recusados na validação (422, sem eco da entrada):
-# assim nenhuma mensagem de 404/409 repete o que o cliente enviou.
 
 
 class StartProtocolRequest(BaseSchema):
+    """Ids fora do formato dos templates são 422 — nenhum 404 repete o que o cliente enviou."""
+
     template_id: str = Field(pattern=IDENTIFIER_PATTERN, max_length=64, examples=["phq9"])
 
 
 class AnswerRequest(BaseSchema):
+    """Resposta à próxima pergunta esperada."""
+
     question_id: str = Field(
         pattern=IDENTIFIER_PATTERN,
         max_length=64,
@@ -33,11 +30,15 @@ class AnswerRequest(BaseSchema):
 
 
 class ScaleOptionResponse(BaseSchema):
+    """Opção da escala."""
+
     value: int
     label: str
 
 
 class QuestionResponse(BaseSchema):
+    """Pergunta a ser feita ao paciente, com a escala completa."""
+
     id: str
     order: int
     text: str
@@ -46,11 +47,15 @@ class QuestionResponse(BaseSchema):
 
 
 class ProgressResponse(BaseSchema):
+    """Perguntas respondidas × total do template."""
+
     answered: int
     total: int
 
 
 class ProtocolResultResponse(BaseSchema):
+    """Resultado final da sessão."""
+
     score: int = Field(description="Soma das respostas dadas (parcial quando encerrado por skip)")
     max_score: int
     ended_by_skip: bool

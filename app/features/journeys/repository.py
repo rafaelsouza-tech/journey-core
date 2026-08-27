@@ -10,6 +10,7 @@ class JourneyRepository(InMemoryRepository[Journey]):
     """Jornadas por paciente."""
 
     def list_by_patient(self, patient_id: UUID) -> list[Journey]:
+        """Jornadas do paciente, na ordem de criação."""
         return self.filter(lambda journey: journey.patient_id == patient_id)
 
     def latest_for_patient(self, patient_id: UUID) -> Journey | None:

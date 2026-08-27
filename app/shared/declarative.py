@@ -9,6 +9,10 @@ from pydantic import BaseModel, ValidationError
 
 from app.core.exceptions import ConfigurationError
 
+# Formato dos identificadores declarados em artefatos (template_id, ids de perguntas,
+# regras, chaves de tarefas). Reutilizado nos contratos da API: o que não casa é 422.
+IDENTIFIER_PATTERN = r"^[a-z][a-z0-9_]*$"
+
 
 def _summarize(exc: ValidationError) -> str:
     return "; ".join(

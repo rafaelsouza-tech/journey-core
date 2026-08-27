@@ -1,19 +1,18 @@
 """Telefone, nome e nascimento não podem aparecer em logs — nem por engano."""
 
 import logging
-from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.core.logging import get_logger, redact_pii
-from tests.conftest import PII_NEEDLES, run_protocol
+from tests.conftest import PII_NEEDLES, CreatePatient, run_protocol
 
 pytestmark = pytest.mark.integration
 
 
 def test_full_flow_logs_contain_events_but_no_pii(
-    client: TestClient, create_patient: Any, caplog: pytest.LogCaptureFixture
+    client: TestClient, create_patient: CreatePatient, caplog: pytest.LogCaptureFixture
 ) -> None:
     caplog.set_level(logging.DEBUG)
 

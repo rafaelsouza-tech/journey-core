@@ -1,15 +1,13 @@
-from typing import Any
-
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.conftest import answer, assert_no_pii, run_protocol, start_protocol
+from tests.conftest import CreatePatient, answer, assert_no_pii, run_protocol, start_protocol
 
 pytestmark = pytest.mark.integration
 
 
 def test_start_returns_first_question_with_literal_scale(
-    client: TestClient, create_patient: Any
+    client: TestClient, create_patient: CreatePatient
 ) -> None:
     patient = create_patient()
     step = start_protocol(client, patient["id"])
@@ -29,7 +27,9 @@ def test_start_returns_first_question_with_literal_scale(
     assert step["result"] is None and step["journey_id"] is None
 
 
-def test_start_without_consent_returns_403_typed(client: TestClient, create_patient: Any) -> None:
+def test_start_without_consent_returns_403_typed(
+    client: TestClient, create_patient: CreatePatient
+) -> None:
     patient = create_patient(terms_accepted=False)
     response = client.post(f"/patients/{patient['id']}/protocols", json={"template_id": "phq9"})
 
@@ -40,7 +40,9 @@ def test_start_without_consent_returns_403_typed(client: TestClient, create_pati
     assert "protocol_started" not in [e["event_name"] for e in trail["data"]]
 
 
-def test_start_unknown_template_returns_404(client: TestClient, create_patient: Any) -> None:
+def test_start_unknown_template_returns_404(
+    client: TestClient, create_patient: CreatePatient
+) -> None:
     patient = create_patient()
     response = client.post(f"/patients/{patient['id']}/protocols", json={"template_id": "gad7"})
 
@@ -48,7 +50,7 @@ def test_start_unknown_template_returns_404(client: TestClient, create_patient: 
     assert response.json()["error"]["code"] == "TEMPLATE_NOT_FOUND"
 
 
-def test_start_twice_returns_409(client: TestClient, create_patient: Any) -> None:
+def test_start_twice_returns_409(client: TestClient, create_patient: CreatePatient) -> None:
     patient = create_patient()
     start_protocol(client, patient["id"])
     response = client.post(f"/patients/{patient['id']}/protocols", json={"template_id": "phq9"})
@@ -57,7 +59,9 @@ def test_start_twice_returns_409(client: TestClient, create_patient: Any) -> Non
     assert response.json()["error"]["code"] == "SESSION_IN_PROGRESS"
 
 
-def test_phq2_skip_completes_with_partial_score(client: TestClient, create_patient: Any) -> None:
+def test_phq2_skip_completes_with_partial_score(
+    client: TestClient, create_patient: CreatePatient
+) -> None:
     patient = create_patient()
     step = run_protocol(client, patient["id"], [1, 1])
 
@@ -74,7 +78,9 @@ def test_phq2_skip_completes_with_partial_score(client: TestClient, create_patie
     assert step["journey_id"] is not None
 
 
-def test_sum_of_exactly_3_continues_to_q3(client: TestClient, create_patient: Any) -> None:
+def test_sum_of_exactly_3_continues_to_q3(
+    client: TestClient, create_patient: CreatePatient
+) -> None:
     patient = create_patient()
     step = run_protocol(client, patient["id"], [2, 1])
 
@@ -82,7 +88,7 @@ def test_sum_of_exactly_3_continues_to_q3(client: TestClient, create_patient: An
     assert step["next_question"]["id"] == "q3"
 
 
-def test_full_protocol_scores_plain_sum(client: TestClient, create_patient: Any) -> None:
+def test_full_protocol_scores_plain_sum(client: TestClient, create_patient: CreatePatient) -> None:
     patient = create_patient()
     values = [2, 1, 0, 3, 1, 2, 0, 1, 3]
     step = run_protocol(client, patient["id"], values)
@@ -95,7 +101,7 @@ def test_full_protocol_scores_plain_sum(client: TestClient, create_patient: Any)
 
 
 def test_protocol_events_carry_result_but_not_raw_answers(
-    client: TestClient, create_patient: Any
+    client: TestClient, create_patient: CreatePatient
 ) -> None:
     patient = create_patient()
     run_protocol(client, patient["id"], [1, 1])
@@ -112,7 +118,7 @@ def test_protocol_events_carry_result_but_not_raw_answers(
 
 
 def test_out_of_order_question_returns_409_with_expected(
-    client: TestClient, create_patient: Any
+    client: TestClient, create_patient: CreatePatient
 ) -> None:
     patient = create_patient()
     step = start_protocol(client, patient["id"])
@@ -124,7 +130,7 @@ def test_out_of_order_question_returns_409_with_expected(
 
 
 def test_duplicate_delivery_of_same_answer_is_rejected(
-    client: TestClient, create_patient: Any
+    client: TestClient, create_patient: CreatePatient
 ) -> None:
     patient = create_patient()
     step = start_protocol(client, patient["id"])
@@ -137,7 +143,7 @@ def test_duplicate_delivery_of_same_answer_is_rejected(
 
 @pytest.mark.parametrize("value", [-1, 4, 10])
 def test_value_outside_scale_returns_422(
-    client: TestClient, create_patient: Any, value: int
+    client: TestClient, create_patient: CreatePatient, value: int
 ) -> None:
     patient = create_patient()
     step = start_protocol(client, patient["id"])
@@ -148,7 +154,9 @@ def test_value_outside_scale_returns_422(
     assert response.json()["error"]["details"]["allowed"] == [0, 1, 2, 3]
 
 
-def test_answer_after_completion_returns_409(client: TestClient, create_patient: Any) -> None:
+def test_answer_after_completion_returns_409(
+    client: TestClient, create_patient: CreatePatient
+) -> None:
     patient = create_patient()
     step = run_protocol(client, patient["id"], [1, 1])
     response = answer(client, step["session_id"], "q3", 1)
@@ -157,7 +165,7 @@ def test_answer_after_completion_returns_409(client: TestClient, create_patient:
     assert response.json()["error"]["code"] == "SESSION_ALREADY_COMPLETED"
 
 
-def test_get_session_returns_same_shape(client: TestClient, create_patient: Any) -> None:
+def test_get_session_returns_same_shape(client: TestClient, create_patient: CreatePatient) -> None:
     patient = create_patient()
     step = run_protocol(client, patient["id"], [2])
     response = client.get(f"/protocol-sessions/{step['session_id']}")
@@ -174,7 +182,9 @@ def test_unknown_session_returns_404(client: TestClient) -> None:
     assert response.json()["error"]["code"] == "SESSION_NOT_FOUND"
 
 
-def test_new_session_allowed_after_completion(client: TestClient, create_patient: Any) -> None:
+def test_new_session_allowed_after_completion(
+    client: TestClient, create_patient: CreatePatient
+) -> None:
     patient = create_patient()
     run_protocol(client, patient["id"], [1, 1])
     second = start_protocol(client, patient["id"])

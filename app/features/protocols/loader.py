@@ -35,4 +35,5 @@ class TemplateRegistry:
         return template
 
     def ids(self) -> list[str]:
+        """`template_id`s carregados."""
         return list(self._templates)

@@ -7,6 +7,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.shared.declarative import IDENTIFIER_PATTERN
+
 
 class PlanTask(BaseModel):
     """Tarefa declarada no plano."""
@@ -14,7 +16,7 @@ class PlanTask(BaseModel):
     # `str_strip_whitespace`: um título só de espaços não passa pelo `min_length`.
     model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
 
-    key: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
+    key: str = Field(pattern=IDENTIFIER_PATTERN)
     title: str = Field(min_length=1)
 
 
@@ -23,7 +25,7 @@ class JourneyPlan(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
 
-    template_id: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
+    template_id: str = Field(pattern=IDENTIFIER_PATTERN)
     version: int = Field(ge=1)
     objective: str = Field(min_length=1)
     tasks: list[PlanTask] = Field(min_length=1)
@@ -62,6 +64,7 @@ class Task:
 
     @property
     def is_active(self) -> bool:
+        """Tarefa ainda em andamento."""
         return self.status is TaskStatus.EM_ANDAMENTO
 
 
@@ -82,7 +85,9 @@ class Journey:
 
     @property
     def active_tasks(self) -> list[Task]:
+        """Tarefas em andamento."""
         return [task for task in self.tasks if task.is_active]
 
     def find_task(self, task_id: UUID) -> Task | None:
+        """Tarefa desta jornada pelo id, se existir."""
         return next((task for task in self.tasks if task.id == task_id), None)
